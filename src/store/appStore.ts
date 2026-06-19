@@ -7,9 +7,21 @@ import type {
   UserData,
   Feedback,
   StepResult,
-  StepType
+  StepType,
+  RecordTrainingResult,
+  Student
 } from '@/types';
-import { getUserData, saveUserData, addWrongAnswer, addPracticeScore } from '@/utils/storage';
+import { 
+  getUserData, 
+  saveUserData, 
+  addWrongAnswer, 
+  addPracticeScore,
+  addRecordTrainingResult,
+  setCurrentStudent,
+  getTeachingPointsByCategory,
+  clearWrongAnswers as clearWrongAnswersStorage,
+  clearUserData as clearUserDataStorage
+} from '@/utils/storage';
 import { determineMissingCategory } from '@/utils/scoring';
 
 interface AppState {
@@ -18,6 +30,8 @@ interface AppState {
   currentFeedback: Feedback | null;
   showFeedback: boolean;
   stepResults: StepResult[];
+  lastOptionSelected: DialogueOption | null;
+  hasAnsweredCurrentStep: boolean;
   
   loadUserData: () => void;
   startPractice: (caseData: CaseScene, steps: DialogueStep[]) => void;
@@ -25,10 +39,14 @@ interface AppState {
   nextStep: () => void;
   prevStep: () => void;
   closeFeedback: () => void;
+  reopenFeedback: () => void;
   completePractice: () => void;
   resetPractice: () => void;
   clearUserData: () => void;
   clearWrongAnswers: () => void;
+  saveRecordResult: (result: Omit<RecordTrainingResult, 'id' | 'timestamp' | 'studentId' | 'studentName'>) => void;
+  switchStudent: (studentId: string) => void;
+  setCurrentStudentLocal: (student: Student) => void;
 }
 
 const initialPracticeState: PracticeState = {
@@ -39,7 +57,8 @@ const initialPracticeState: PracticeState = {
   currentScore: 0,
   maxScore: 0,
   isCompleted: false,
-  startTime: 0
+  startTime: 0,
+  lastFeedback: null
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -48,6 +67,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentFeedback: null,
   showFeedback: false,
   stepResults: [],
+  lastOptionSelected: null,
+  hasAnsweredCurrentStep: false,
   
   loadUserData: () => {
     set({ userData: getUserData() });
@@ -67,18 +88,23 @@ export const useAppStore = create<AppState>((set, get) => ({
         currentScore: 0,
         maxScore,
         isCompleted: false,
-        startTime: Date.now()
+        startTime: Date.now(),
+        lastFeedback: null
       },
       stepResults: [],
       currentFeedback: null,
-      showFeedback: false
+      showFeedback: false,
+      lastOptionSelected: null,
+      hasAnsweredCurrentStep: false
     });
   },
   
   selectOption: (option: DialogueOption) => {
-    const { practiceState, stepResults } = get();
-    const currentStep = practiceState.steps[practiceState.currentStepIndex];
+    const { practiceState, stepResults, hasAnsweredCurrentStep } = get();
     
+    if (hasAnsweredCurrentStep) return;
+    
+    const currentStep = practiceState.steps[practiceState.currentStepIndex];
     if (!currentStep) return;
     
     const newSelectedOptions = {
@@ -102,6 +128,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         followup: 'review_suggestion'
       };
       
+      const teachingPoints = getTeachingPointsByCategory(missingCategory);
+      
       addWrongAnswer({
         caseId: practiceState.currentCase!.id,
         caseTitle: practiceState.currentCase!.title,
@@ -113,7 +141,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         score: option.score,
         feedback: option.feedback.explanation,
         selectedOption: option.content,
-        correctOption: correctOption.content
+        correctOption: correctOption.content,
+        teachingPoints
       });
     }
     
@@ -131,11 +160,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       practiceState: {
         ...practiceState,
         selectedOptions: newSelectedOptions,
-        currentScore: newScore
+        currentScore: newScore,
+        lastFeedback: option.feedback
       },
       currentFeedback: option.feedback,
       showFeedback: true,
       stepResults: newStepResults,
+      lastOptionSelected: option,
+      hasAnsweredCurrentStep: true,
       userData: getUserData()
     });
   },
@@ -151,7 +183,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           currentStepIndex: nextIndex
         },
         showFeedback: false,
-        currentFeedback: null
+        currentFeedback: null,
+        hasAnsweredCurrentStep: false,
+        lastOptionSelected: null
       });
     } else {
       get().completePractice();
@@ -167,13 +201,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         practiceState: {
           ...practiceState,
           currentStepIndex: prevIndex
-        }
+        },
+        hasAnsweredCurrentStep: false
       });
     }
   },
   
   closeFeedback: () => {
     set({ showFeedback: false });
+  },
+  
+  reopenFeedback: () => {
+    const { practiceState } = get();
+    if (practiceState.lastFeedback) {
+      set({ showFeedback: true, currentFeedback: practiceState.lastFeedback });
+    }
   },
   
   completePractice: () => {
@@ -205,19 +247,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       practiceState: { ...initialPracticeState },
       currentFeedback: null,
       showFeedback: false,
-      stepResults: []
+      stepResults: [],
+      lastOptionSelected: null,
+      hasAnsweredCurrentStep: false
     });
   },
   
   clearUserData: () => {
-    localStorage.removeItem('dental-followup-training-data');
+    clearUserDataStorage();
     set({ userData: getUserData() });
   },
   
   clearWrongAnswers: () => {
+    clearWrongAnswersStorage();
+    set({ userData: getUserData() });
+  },
+  
+  saveRecordResult: (result) => {
+    addRecordTrainingResult(result);
+    set({ userData: getUserData() });
+  },
+  
+  switchStudent: (studentId) => {
+    setCurrentStudent(studentId);
+    set({ userData: getUserData() });
+  },
+  
+  setCurrentStudentLocal: (student) => {
     const userData = getUserData();
-    userData.wrongAnswers = [];
+    userData.currentStudentId = student.id;
     saveUserData(userData);
-    set({ userData });
+    set({ userData: getUserData() });
   }
 }));
+

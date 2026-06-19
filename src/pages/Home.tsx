@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Star, MessageCircle, FileText, AlertTriangle, Trophy, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { Star, MessageCircle, FileText, AlertTriangle, Trophy, CheckCircle2, Target, BookOpen } from 'lucide-react';
 import { Card, CardContent, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { cases } from '@/data/cases';
 import { useAppStore } from '@/store/appStore';
-import { getBestScoreForCase, isCaseCompleted } from '@/utils/storage';
+import { getBestScoreForCase, isCaseCompleted, getPracticeCountByCase, getRecordCountByCase } from '@/utils/storage';
+import { calculateReviewStats } from '@/utils/statistics';
 
 const difficultyColors = {
   1: 'from-green-400 to-green-500',
@@ -26,11 +27,20 @@ export default function HomePage() {
   const { userData } = useAppStore();
   const [hoveredCase, setHoveredCase] = useState<string | null>(null);
   
-  const totalPractices = userData.practiceScores.length;
+  const stats = calculateReviewStats(
+    userData.wrongAnswers,
+    userData.practiceScores,
+    userData.recordTrainingResults
+  );
+  
+  const totalPractices = stats.totalPractices;
   const avgScore = totalPractices > 0
     ? Math.round(userData.practiceScores.reduce((sum, s) => sum + s.totalScore, 0) / totalPractices)
     : 0;
   const totalWrong = userData.wrongAnswers.length;
+  const accuracyRate = stats.accuracyRate;
+  const totalRecordTrainings = stats.totalRecordTrainings;
+  const avgRecordScore = stats.averageRecordScore;
   
   const handleStartPractice = (caseId: string) => {
     navigate(`/practice/${caseId}`);
@@ -75,45 +85,87 @@ export default function HomePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12"
+          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 md:gap-6 mb-12"
         >
           <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
-                  <Trophy className="w-7 h-7" />
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <Trophy className="w-5 h-5 md:w-7 md:h-7" />
                 </div>
                 <div>
-                  <p className="text-blue-100 text-sm">练习次数</p>
-                  <p className="text-3xl font-bold">{totalPractices}</p>
+                  <p className="text-blue-100 text-xs md:text-sm">总练习次数</p>
+                  <p className="text-2xl md:text-3xl font-bold">{totalPractices}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           
           <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white border-0">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
-                  <Star className="w-7 h-7" />
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <Star className="w-5 h-5 md:w-7 md:h-7" />
                 </div>
                 <div>
-                  <p className="text-green-100 text-sm">平均得分</p>
-                  <p className="text-3xl font-bold">{avgScore}<span className="text-lg">/100</span></p>
+                  <p className="text-green-100 text-xs md:text-sm">平均得分</p>
+                  <p className="text-2xl md:text-3xl font-bold">{avgScore}<span className="text-sm md:text-lg">/100</span></p>
                 </div>
               </div>
             </CardContent>
           </Card>
           
           <Card className="bg-gradient-to-br from-orange-500 to-red-500 text-white border-0">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
-                  <AlertTriangle className="w-7 h-7" />
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-5 h-5 md:w-7 md:h-7" />
                 </div>
                 <div>
-                  <p className="text-orange-100 text-sm">待改进错题</p>
-                  <p className="text-3xl font-bold">{totalWrong}</p>
+                  <p className="text-orange-100 text-xs md:text-sm">错题总数</p>
+                  <p className="text-2xl md:text-3xl font-bold">{totalWrong}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-cyan-500 to-teal-600 text-white border-0">
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <Target className="w-5 h-5 md:w-7 md:h-7" />
+                </div>
+                <div>
+                  <p className="text-cyan-100 text-xs md:text-sm">正确率</p>
+                  <p className="text-2xl md:text-3xl font-bold">{accuracyRate}<span className="text-sm md:text-lg">%</span></p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-purple-500 to-indigo-600 text-white border-0">
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <BookOpen className="w-5 h-5 md:w-7 md:h-7" />
+                </div>
+                <div>
+                  <p className="text-purple-100 text-xs md:text-sm">记录训练次数</p>
+                  <p className="text-2xl md:text-3xl font-bold">{totalRecordTrainings}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-pink-500 to-rose-600 text-white border-0">
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <Star className="w-5 h-5 md:w-7 md:h-7" />
+                </div>
+                <div>
+                  <p className="text-pink-100 text-xs md:text-sm">平均记录得分</p>
+                  <p className="text-2xl md:text-3xl font-bold">{avgRecordScore}<span className="text-sm md:text-lg">/100</span></p>
                 </div>
               </div>
             </CardContent>
@@ -139,6 +191,8 @@ export default function HomePage() {
           {cases.map((caseItem, index) => {
             const completed = isCaseCompleted(caseItem.id);
             const bestScore = getBestScoreForCase(caseItem.id);
+            const practiceCount = getPracticeCountByCase(caseItem.id);
+            const recordCount = getRecordCountByCase(caseItem.id);
             const isHovered = hoveredCase === caseItem.id;
             
             return (
@@ -215,7 +269,17 @@ export default function HomePage() {
                     </div>
                   </CardContent>
                   
-                  <CardFooter className="bg-white border-t border-gray-100">
+                  <CardFooter className="bg-white border-t border-gray-100 flex flex-col gap-3">
+                    <div className="w-full flex justify-center gap-2">
+                      <Badge variant="info" size="sm" className="gap-1">
+                        <MessageCircle className="w-3 h-3" />
+                        话术练习 {practiceCount} 次
+                      </Badge>
+                      <Badge variant="primary" size="sm" className="gap-1">
+                        <FileText className="w-3 h-3" />
+                        记录训练 {recordCount} 次
+                      </Badge>
+                    </div>
                     <div className="w-full grid grid-cols-2 gap-3">
                       <Button
                         variant="primary"

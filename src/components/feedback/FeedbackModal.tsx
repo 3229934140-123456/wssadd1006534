@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, AlertTriangle, XCircle, X } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import type { Feedback } from '@/types';
 import { getMissingCategoryChinese, getMissingCategoryColor } from '@/utils/scoring';
@@ -12,17 +11,13 @@ interface FeedbackModalProps {
   feedback: Feedback | null;
   stepName: StepName;
   onClose: () => void;
-  onNext: () => void;
-  isLastStep: boolean;
 }
 
 export const FeedbackModal = ({
   isOpen,
   feedback,
   stepName,
-  onClose,
-  onNext,
-  isLastStep
+  onClose
 }: FeedbackModalProps) => {
   if (!feedback) return null;
   
@@ -151,20 +146,6 @@ export const FeedbackModal = ({
                 </div>
               </motion.div>
               
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="mt-8 flex justify-center gap-4"
-              >
-                <Button
-                  variant={feedback.type === 'correct' ? 'primary' : 'secondary'}
-                  onClick={onNext}
-                  size="lg"
-                >
-                  {isLastStep ? '查看最终结果' : '继续下一步'}
-                </Button>
-              </motion.div>
             </div>
           </motion.div>
         </>

@@ -3,6 +3,7 @@ import type { RecordTemplate } from '@/types';
 export const recordTemplates: Record<string, RecordTemplate> = {
   'case-001': {
     caseId: 'case-001',
+    requiredSections: ['basic_info', 'chief_complaint', 'present_illness', 'oral_exam', 'guidance', 'recheck_plan'],
     patientAnswers: [
       {
         question: '洁牙师询问：李小姐您好，请问您现在牙齿感觉怎么样？',
@@ -48,6 +49,7 @@ export const recordTemplates: Record<string, RecordTemplate> = {
   },
   'case-002': {
     caseId: 'case-002',
+    requiredSections: ['basic_info', 'chief_complaint', 'present_illness', 'oral_exam', 'guidance', 'recheck_plan'],
     patientAnswers: [
       {
         question: '洁牙师询问：王先生您好，您最近牙齿感觉怎么样？',
@@ -99,6 +101,7 @@ export const recordTemplates: Record<string, RecordTemplate> = {
   },
   'case-003': {
     caseId: 'case-003',
+    requiredSections: ['basic_info', 'chief_complaint', 'present_illness', 'oral_exam', 'guidance', 'recheck_plan'],
     patientAnswers: [
       {
         question: '洁牙师询问：张妈妈您好，请问是宝宝洁治后有什么让您担心的地方吗？',

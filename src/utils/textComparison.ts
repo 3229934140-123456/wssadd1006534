@@ -1,3 +1,25 @@
+import type { RecordSection } from '@/types';
+
+const SECTION_RULES: { section: RecordSection; keywords: string[] }[] = [
+  { section: 'basic_info', keywords: ['患者', '姓名', '性别', '年龄', '编号', '联系方式'] },
+  { section: 'chief_complaint', keywords: ['主诉', '因', '要求', '诉求'] },
+  { section: 'present_illness', keywords: ['现病史', '病史', '近', '症状', '发病', '既往史'] },
+  { section: 'oral_exam', keywords: ['口腔检查', '检查', '探诊', '牙石', '牙龈', '出血', '牙周', '探诊深度'] },
+  { section: 'guidance', keywords: ['指导', '口腔卫生', '刷牙', '牙线', '巴氏', '饮食', '注意事项'] },
+  { section: 'recheck_plan', keywords: ['复诊', '复查', '定期', '下次', '随访', '建议'] }
+];
+
+const SECTION_NAMES: Record<RecordSection, string> = {
+  basic_info: '患者基本信息',
+  chief_complaint: '主诉',
+  present_illness: '现病史',
+  oral_exam: '口腔检查',
+  guidance: '护理指导',
+  recheck_plan: '复诊计划'
+};
+
+export const getSectionName = (section: RecordSection): string => SECTION_NAMES[section] || '其他';
+
 const levenshteinDistance = (a: string, b: string): number => {
   const matrix: number[][] = [];
   
@@ -65,21 +87,25 @@ export const calculateKeywordMatch = (
 export const checkStructuralCompleteness = (text: string): {
   score: number;
   hasStructure: boolean;
-  missingSections: string[];
+  missingSections: RecordSection[];
+  presentSections: RecordSection[];
 } => {
-  const requiredSections = ['患者姓名', '主诉', '现病史', '指导', '复诊'];
-  const missingSections: string[] = [];
+  const missingSections: RecordSection[] = [];
+  const presentSections: RecordSection[] = [];
   
-  requiredSections.forEach(section => {
-    if (!text.includes(section)) {
-      missingSections.push(section);
+  SECTION_RULES.forEach(rule => {
+    const found = rule.keywords.some(keyword => text.includes(keyword));
+    if (found) {
+      presentSections.push(rule.section);
+    } else {
+      missingSections.push(rule.section);
     }
   });
   
-  const hasStructure = requiredSections.some(section => text.includes(section));
-  const score = Math.round(((requiredSections.length - missingSections.length) / requiredSections.length) * 100);
+  const hasStructure = presentSections.length > 0;
+  const score = Math.round((presentSections.length / SECTION_RULES.length) * 100);
   
-  return { score, hasStructure, missingSections };
+  return { score, hasStructure, missingSections, presentSections };
 };
 
 export const calculateRecordScore = (
@@ -93,17 +119,18 @@ export const calculateRecordScore = (
   structureScore: number;
   matchedKeywords: string[];
   missingKeywords: string[];
-  missingSections: string[];
+  missingSections: RecordSection[];
+  presentSections: RecordSection[];
 } => {
   const textSimilarity = calculateTextSimilarity(userRecord, referenceRecord);
   const { score: keywordScore, matched: matchedKeywords, missing: missingKeywords } = 
     calculateKeywordMatch(userRecord, keyPoints);
-  const { score: structureScore, missingSections } = checkStructuralCompleteness(userRecord);
+  const { score: structureScore, missingSections, presentSections } = checkStructuralCompleteness(userRecord);
   
   const totalScore = Math.round(
-    keywordScore * 0.6 + 
-    textSimilarity * 0.3 + 
-    structureScore * 0.1
+    keywordScore * 0.5 + 
+    textSimilarity * 0.25 + 
+    structureScore * 0.25
   );
   
   return {
@@ -113,7 +140,8 @@ export const calculateRecordScore = (
     structureScore,
     matchedKeywords,
     missingKeywords,
-    missingSections
+    missingSections,
+    presentSections
   };
 };
 
@@ -140,3 +168,4 @@ export const highlightDifferences = (
   
   return { userHighlighted, referenceHighlighted };
 };
+

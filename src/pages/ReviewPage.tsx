@@ -5,36 +5,37 @@ import {
   ArrowLeft, 
   AlertTriangle,
   Calendar,
-  MessageCircle,
-  FileText,
-  TrendingUp,
-  Clock,
-  ChevronRight,
+  ChevronDown,
   BookOpen,
   RefreshCw,
-  Home
+  Home,
+  Trophy,
+  ListOrdered,
+  CheckCircle2,
+  XCircle,
+  Lightbulb
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/store/appStore';
 import { getCaseById } from '@/data/cases';
-import { getMostFrequentMistakes } from '@/utils/statistics';
-import type { WrongAnswer, MissingCategory } from '@/types';
+import { getCategoryReviews } from '@/utils/statistics';
+import type { MissingCategory, CategoryReview, WrongAnswer } from '@/types';
 
-const categoryNames: Record<MissingCategory, string> = {
-  brushing: '刷牙方式',
-  floss: '牙线指导',
-  sensitivity: '敏感期说明',
-  recheck: '复诊时机',
-  diet: '饮食指导',
-  hygiene: '口腔卫生',
-  symptom: '症状解释',
-  emotional: '情绪安抚',
-  other: '其他'
+const categoryColors: Record<MissingCategory, { bg: string; text: string; bar: string; ring: string }> = {
+  brushing: { bg: 'bg-blue-50', text: 'text-blue-700', bar: 'bg-blue-500', ring: 'ring-blue-400' },
+  floss: { bg: 'bg-green-50', text: 'text-green-700', bar: 'bg-green-500', ring: 'ring-green-400' },
+  sensitivity: { bg: 'bg-purple-50', text: 'text-purple-700', bar: 'bg-purple-500', ring: 'ring-purple-400' },
+  recheck: { bg: 'bg-orange-50', text: 'text-orange-700', bar: 'bg-orange-500', ring: 'ring-orange-400' },
+  diet: { bg: 'bg-pink-50', text: 'text-pink-700', bar: 'bg-pink-500', ring: 'ring-pink-400' },
+  hygiene: { bg: 'bg-cyan-50', text: 'text-cyan-700', bar: 'bg-cyan-500', ring: 'ring-cyan-400' },
+  symptom: { bg: 'bg-red-50', text: 'text-red-700', bar: 'bg-red-500', ring: 'ring-red-400' },
+  emotional: { bg: 'bg-yellow-50', text: 'text-yellow-700', bar: 'bg-yellow-500', ring: 'ring-yellow-400' },
+  other: { bg: 'bg-gray-50', text: 'text-gray-700', bar: 'bg-gray-500', ring: 'ring-gray-400' }
 };
 
-const categoryColors: Record<MissingCategory, string> = {
+const categoryBadgeColors: Record<MissingCategory, string> = {
   brushing: 'bg-blue-100 text-blue-700',
   floss: 'bg-green-100 text-green-700',
   sensitivity: 'bg-purple-100 text-purple-700',
@@ -50,10 +51,9 @@ export default function ReviewPage() {
   const navigate = useNavigate();
   const { userData, clearWrongAnswers } = useAppStore();
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'this_week' | 'this_month'>('all');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedCategory, setExpandedCategory] = useState<MissingCategory | null>(null);
   
   const wrongAnswers = userData.wrongAnswers || [];
-  const frequentMistakes = getMostFrequentMistakes(wrongAnswers);
   
   const filteredWrongAnswers = wrongAnswers.filter(item => {
     if (selectedFilter === 'all') return true;
@@ -70,6 +70,9 @@ export default function ReviewPage() {
     return true;
   });
   
+  const categoryReviews = getCategoryReviews(filteredWrongAnswers);
+  const top3Categories = categoryReviews.slice(0, 3);
+  
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     return date.toLocaleDateString('zh-CN', {
@@ -80,14 +83,20 @@ export default function ReviewPage() {
     });
   };
   
-  const toggleExpand = (id: string) => {
-    setExpandedId(expandedId === id ? null : id);
+  const toggleExpand = (category: MissingCategory) => {
+    setExpandedCategory(expandedCategory === category ? null : category);
   };
   
   const handleClearAll = () => {
     if (confirm('确定要清空所有错题记录吗？此操作不可恢复。')) {
       clearWrongAnswers();
+      setExpandedCategory(null);
     }
+  };
+
+  const getMaxCount = () => {
+    if (categoryReviews.length === 0) return 1;
+    return Math.max(...categoryReviews.map(c => c.count), 1);
   };
   
   return (
@@ -100,97 +109,94 @@ export default function ReviewPage() {
           </Button>
           
           <div className="text-center">
-            <h1 className="text-xl font-bold text-gray-800">错题复盘</h1>
-            <p className="text-sm text-gray-500">共 {wrongAnswers.length} 条错题记录</p>
+            <h1 className="text-xl font-bold text-gray-800">晨会讲评</h1>
+            <p className="text-sm text-gray-500">共 {filteredWrongAnswers.length} 条错题记录</p>
           </div>
           
           <div className="w-24" />
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Card>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <Card className="lg:col-span-1">
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
                   <AlertTriangle className="w-6 h-6 text-red-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-800">{wrongAnswers.length}</p>
+                  <p className="text-3xl font-bold text-gray-800">{filteredWrongAnswers.length}</p>
                   <p className="text-sm text-gray-500">总错题数</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6 text-blue-600" />
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-2">
+              <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-orange-500" />
+                高频错误 TOP3
+              </h2>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {top3Categories.length === 0 ? (
+                <p className="text-sm text-gray-400 py-2">暂无数据</p>
+              ) : (
+                <div className="space-y-2">
+                  {top3Categories.map((item, index) => (
+                    <motion.div
+                      key={item.category}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm ${
+                          index === 0 ? 'bg-yellow-100 text-yellow-700' :
+                          index === 1 ? 'bg-gray-200 text-gray-600' :
+                          'bg-orange-100 text-orange-700'
+                        }`}>
+                          #{index + 1}
+                        </div>
+                        <Badge className={categoryBadgeColors[item.category]} size="sm">
+                          {item.categoryName}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-gray-600">{item.count} 次</span>
+                        <span className="text-sm font-medium text-gray-800 w-12 text-right">{item.percentage}%</span>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-800">{frequentMistakes.length}</p>
-                  <p className="text-sm text-gray-500">高频错误类型</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-800">
-                    {wrongAnswers.length > 0 
-                      ? formatDate(wrongAnswers[wrongAnswers.length - 1].timestamp).split(' ')[0]
-                      : '-'
-                    }
-                  </p>
-                  <p className="text-sm text-gray-500">最近练习日期</p>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </div>
         
-        {frequentMistakes.length > 0 && (
+        {categoryReviews.length > 0 && (
           <Card className="mb-6">
             <CardHeader>
-              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-orange-500" />
-                高频错误类型（晨会讲评参考）
+              <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                <ListOrdered className="w-5 h-5 text-blue-500" />
+                今日晨会建议讲评顺序
               </h2>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {frequentMistakes.slice(0, 6).map((mistake, index) => (
+              <div className="flex flex-wrap gap-2">
+                {categoryReviews.map((item, index) => (
                   <motion.div
-                    key={mistake.category}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
+                    key={item.category}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: index * 0.05 }}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"
+                    className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                        <span className="font-bold text-orange-600">#{index + 1}</span>
-                      </div>
-                      <div>
-                        <Badge className={categoryColors[mistake.category as MissingCategory]} size="sm">
-                          {categoryNames[mistake.category as MissingCategory]}
-                        </Badge>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {mistake.count} 次错误
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-800">{mistake.percentage}%</p>
-                      <p className="text-xs text-gray-500">占比</p>
-                    </div>
+                    <span className="w-5 h-5 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                      {index + 1}
+                    </span>
+                    <span className="text-sm font-medium text-gray-700">{item.categoryName}</span>
                   </motion.div>
                 ))}
               </div>
@@ -225,7 +231,7 @@ export default function ReviewPage() {
           )}
         </div>
         
-        {filteredWrongAnswers.length === 0 ? (
+        {categoryReviews.length === 0 ? (
           <Card>
             <CardContent className="p-12 text-center">
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -247,68 +253,58 @@ export default function ReviewPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-3">
-            {filteredWrongAnswers.map((item: WrongAnswer, index: number) => {
-              const caseData = getCaseById(item.caseId);
-              const isExpanded = expandedId === item.id;
+          <div className="space-y-4">
+            {categoryReviews.map((review: CategoryReview, index: number) => {
+              const isExpanded = expandedCategory === review.category;
+              const colors = categoryColors[review.category];
+              const maxCount = getMaxCount();
+              const progressWidth = (review.count / maxCount) * 100;
               
               return (
                 <motion.div
-                  key={item.id}
+                  key={review.category}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.03 }}
+                  transition={{ delay: index * 0.05 }}
                 >
                   <Card
                     className={`cursor-pointer transition-all ${
-                      isExpanded ? 'ring-2 ring-blue-500' : 'hover:shadow-md'
+                      isExpanded ? `ring-2 ${colors.ring} shadow-lg` : 'hover:shadow-md'
                     }`}
-                    onClick={() => toggleExpand(item.id)}
+                    onClick={() => toggleExpand(review.category)}
                   >
-                    <CardContent className="p-4">
+                    <CardContent className="p-5">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                            <Calendar className="w-5 h-5 text-red-600" />
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className={`w-12 h-12 ${colors.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
+                            <span className="text-xl font-bold">{index + 1}</span>
                           </div>
-                          <div>
-                            <h4 className="font-medium text-gray-800">
-                              {caseData?.title || '未知病例'}
-                            </h4>
-                            <div className="flex items-center gap-3 mt-1">
-                              <span className="text-xs text-gray-500 flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {formatDate(item.timestamp)}
-                              </span>
-                              <Badge
-                                className={categoryColors[item.missingCategory as MissingCategory]}
-                                size="sm"
-                              >
-                                {categoryNames[item.missingCategory as MissingCategory]}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h4 className="font-bold text-gray-800 text-lg">{review.categoryName}</h4>
+                              <Badge className={categoryBadgeColors[review.category]} size="sm">
+                                {review.count} 次错误
                               </Badge>
+                              <span className="text-sm font-medium text-gray-600">占比 {review.percentage}%</span>
+                            </div>
+                            <div className="w-full max-w-md h-3 bg-gray-100 rounded-full overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${progressWidth}%` }}
+                                transition={{ duration: 0.6, delay: index * 0.05 + 0.2 }}
+                                className={`h-full ${colors.bar} rounded-full`}
+                              />
                             </div>
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-3">
-                          <div className="text-right hidden sm:block">
-                            <p className="text-sm font-medium text-gray-700">
-                              {item.stepType === 'opening' ? '开场问候' :
-                               item.stepType === 'symptom_inquiry' ? '症状询问' :
-                               item.stepType === 'care_guidance' ? '护理指导' :
-                               item.stepType === 'review_suggestion' ? '复诊建议' : '其他步骤'}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              得分: {item.score}
-                            </p>
-                          </div>
-                          <motion.div
-                            animate={{ rotate: isExpanded ? 90 : 0 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <ChevronRight className="w-5 h-5 text-gray-400" />
-                          </motion.div>
-                        </div>
+                        <motion.div
+                          animate={{ rotate: isExpanded ? 180 : 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="ml-4"
+                        >
+                          <ChevronDown className="w-6 h-6 text-gray-400" />
+                        </motion.div>
                       </div>
                       
                       <AnimatePresence>
@@ -317,51 +313,101 @@ export default function ReviewPage() {
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
+                            transition={{ duration: 0.3 }}
                             className="overflow-hidden"
                           >
-                            <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
-                              <div className="bg-red-50 rounded-xl p-4">
-                                <p className="text-sm font-medium text-red-700 mb-2">您选择的话术：</p>
-                                <p className="text-sm text-gray-700">{item.selectedOption}</p>
+                            <div className="mt-5 pt-5 border-t border-gray-100 space-y-5">
+                              
+                              <div className={`${colors.bg} rounded-xl p-4`}>
+                                <h5 className="font-bold text-gray-800 flex items-center gap-2 mb-3">
+                                  <Lightbulb className="w-4 h-4 text-yellow-600" />
+                                  推荐讲评要点
+                                </h5>
+                                <div className="space-y-2">
+                                  {review.teachingPoints.map((point, pointIndex) => (
+                                    <motion.div
+                                      key={pointIndex}
+                                      initial={{ opacity: 0, x: -10 }}
+                                      animate={{ opacity: 1, x: 0 }}
+                                      transition={{ delay: pointIndex * 0.05 }}
+                                      className="flex items-start gap-2"
+                                    >
+                                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                      <span className="text-sm text-gray-700">{point}</span>
+                                    </motion.div>
+                                  ))}
+                                </div>
                               </div>
                               
-                              <div className="bg-green-50 rounded-xl p-4">
-                                <p className="text-sm font-medium text-green-700 mb-2">正确参考话术：</p>
-                                <p className="text-sm text-gray-700">{item.correctOption}</p>
+                              <div>
+                                <h5 className="font-bold text-gray-800 flex items-center gap-2 mb-3">
+                                  <XCircle className="w-4 h-4 text-red-500" />
+                                  错误病例列表（{review.wrongAnswers.length} 条）
+                                </h5>
+                                <div className="space-y-3">
+                                  {review.wrongAnswers.map((wrong: WrongAnswer, wrongIndex: number) => {
+                                    const caseData = getCaseById(wrong.caseId);
+                                    return (
+                                      <motion.div
+                                        key={wrong.id}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: wrongIndex * 0.03 }}
+                                        className="bg-white rounded-xl border border-gray-200 p-4"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="flex items-center justify-between mb-3">
+                                          <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                                              <BookOpen className="w-4 h-4 text-white" />
+                                            </div>
+                                            <div>
+                                              <p className="font-medium text-gray-800 text-sm">
+                                                {caseData?.title || wrong.caseTitle || '未知病例'}
+                                              </p>
+                                              <div className="flex items-center gap-2 mt-0.5">
+                                                <Calendar className="w-3 h-3 text-gray-400" />
+                                                <span className="text-xs text-gray-500">{formatDate(wrong.timestamp)}</span>
+                                                {wrong.studentName && (
+                                                  <span className="text-xs text-gray-500">· {wrong.studentName}</span>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              navigate(`/practice/${wrong.caseId}`);
+                                            }}
+                                          >
+                                            重新练习
+                                          </Button>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                          <div className="bg-red-50 rounded-lg p-3">
+                                            <p className="text-xs font-medium text-red-700 mb-1.5 flex items-center gap-1">
+                                              <XCircle className="w-3 h-3" />
+                                              错误话术
+                                            </p>
+                                            <p className="text-sm text-gray-700 leading-relaxed">{wrong.selectedOption}</p>
+                                          </div>
+                                          <div className="bg-green-50 rounded-lg p-3">
+                                            <p className="text-xs font-medium text-green-700 mb-1.5 flex items-center gap-1">
+                                              <CheckCircle2 className="w-3 h-3" />
+                                              正确参考话术
+                                            </p>
+                                            <p className="text-sm text-gray-700 leading-relaxed">{wrong.correctOption}</p>
+                                          </div>
+                                        </div>
+                                      </motion.div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                               
-                              <div className="bg-blue-50 rounded-xl p-4">
-                                <p className="text-sm font-medium text-blue-700 mb-2">系统反馈：</p>
-                                <p className="text-sm text-gray-700">{item.feedback}</p>
-                              </div>
-                              
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="primary"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(`/practice/${item.caseId}`);
-                                  }}
-                                  className="gap-2"
-                                >
-                                  <MessageCircle className="w-4 h-4" />
-                                  重新练习
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(`/record/${item.caseId}`);
-                                  }}
-                                  className="gap-2"
-                                >
-                                  <FileText className="w-4 h-4" />
-                                  记录练习
-                                </Button>
-                              </div>
                             </div>
                           </motion.div>
                         )}

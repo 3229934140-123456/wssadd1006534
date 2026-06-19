@@ -17,6 +17,8 @@ export type FeedbackType = 'correct' | 'warning' | 'error';
 
 export type UserRole = 'student' | 'teacher';
 
+export type RecordSection = 'basic_info' | 'chief_complaint' | 'present_illness' | 'oral_exam' | 'guidance' | 'recheck_plan';
+
 export interface CaseScene {
   id: string;
   title: string;
@@ -54,6 +56,7 @@ export interface Feedback {
   missingPoints: string[];
   correctSpeech: string;
   explanation: string;
+  teachingPoints?: string[];
 }
 
 export interface PatientAnswer {
@@ -66,6 +69,24 @@ export interface RecordTemplate {
   patientAnswers: PatientAnswer[];
   referenceRecord: string;
   keyPoints: string[];
+  requiredSections: RecordSection[];
+}
+
+export interface RecordTrainingResult {
+  id: string;
+  caseId: string;
+  caseTitle: string;
+  userRecord: string;
+  totalScore: number;
+  keywordScore: number;
+  textSimilarity: number;
+  structureScore: number;
+  matchedKeywords: string[];
+  missingKeywords: string[];
+  missingSections: RecordSection[];
+  studentId: string;
+  studentName: string;
+  timestamp: number;
 }
 
 export interface WrongAnswer {
@@ -81,6 +102,9 @@ export interface WrongAnswer {
   feedback: string;
   selectedOption: string;
   correctOption: string;
+  teachingPoints: string[];
+  studentId: string;
+  studentName: string;
   timestamp: number;
 }
 
@@ -92,7 +116,17 @@ export interface PracticeScore {
   maxScore: number;
   correctRate: number;
   completionTime: number;
+  studentId: string;
+  studentName: string;
   timestamp: number;
+}
+
+export interface Student {
+  id: string;
+  name: string;
+  avatar?: string;
+  joinDate: number;
+  isActive: boolean;
 }
 
 export interface UserData {
@@ -101,6 +135,9 @@ export interface UserData {
   role: UserRole;
   practiceScores: PracticeScore[];
   wrongAnswers: WrongAnswer[];
+  recordTrainingResults: RecordTrainingResult[];
+  currentStudentId: string;
+  students: Student[];
 }
 
 export interface PracticeState {
@@ -112,6 +149,7 @@ export interface PracticeState {
   maxScore: number;
   isCompleted: boolean;
   startTime: number;
+  lastFeedback: Feedback | null;
 }
 
 export interface ReviewStats {
@@ -120,6 +158,18 @@ export interface ReviewStats {
   accuracyRate: number;
   wrongByCategory: Record<MissingCategory, number>;
   recentProgress: { date: string; correctRate: number }[];
+  totalRecordTrainings: number;
+  averageRecordScore: number;
+  frequentMissingSections: Record<RecordSection, number>;
+}
+
+export interface CategoryReview {
+  category: MissingCategory;
+  categoryName: string;
+  count: number;
+  percentage: number;
+  wrongAnswers: WrongAnswer[];
+  teachingPoints: string[];
 }
 
 export interface StepResult {
@@ -129,3 +179,4 @@ export interface StepResult {
   score: number;
   feedback: Feedback;
 }
+

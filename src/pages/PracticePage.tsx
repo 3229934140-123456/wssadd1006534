@@ -12,7 +12,6 @@ import {
   Trophy,
   RotateCcw,
   Home,
-  Clock,
   Target
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
@@ -35,10 +34,13 @@ export default function PracticePage() {
     currentFeedback,
     showFeedback,
     stepResults,
+    hasAnsweredCurrentStep,
+    lastOptionSelected,
     startPractice,
     selectOption,
     nextStep,
     closeFeedback,
+    reopenFeedback,
     resetPractice
   } = useAppStore();
   
@@ -70,10 +72,14 @@ export default function PracticePage() {
     : 0;
   
   const handleSelectOption = (option: DialogueOption) => {
-    if (practiceState.selectedOptions[currentStep?.id || '']) return;
+    if (hasAnsweredCurrentStep) return;
     selectOption(option);
   };
   
+  const handleReopenFeedback = () => {
+    reopenFeedback();
+  };
+
   const handleNext = () => {
     nextStep();
   };
@@ -359,6 +365,20 @@ export default function PracticePage() {
                     <Badge variant="primary" size="md">
                       {getStepNameChinese(currentStep.stepName)}
                     </Badge>
+                    {hasAnsweredCurrentStep && lastOptionSelected && (
+                      <Badge 
+                        variant={lastOptionSelected.isCorrect ? 'success' : 'danger'} 
+                        size="md"
+                        className="gap-1"
+                      >
+                        {lastOptionSelected.isCorrect ? (
+                          <CheckCircle2 className="w-4 h-4" />
+                        ) : (
+                          <XCircle className="w-4 h-4" />
+                        )}
+                        {lastOptionSelected.isCorrect ? '回答正确' : '回答错误'}
+                      </Badge>
+                    )}
                   </div>
                   <h2 className="text-xl font-bold text-gray-800">{currentStep.instruction}</h2>
                 </CardHeader>
@@ -366,8 +386,7 @@ export default function PracticePage() {
                   <div className="space-y-4">
                     <AnimatePresence>
                       {currentStep.options.map((option, index) => {
-                        const isSelected = practiceState.selectedOptions[currentStep.id]?.id === option.id;
-                        const hasAnswered = !!practiceState.selectedOptions[currentStep.id];
+                        const isSelected = lastOptionSelected?.id === option.id;
                         
                         return (
                           <motion.button
@@ -376,20 +395,20 @@ export default function PracticePage() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.1 }}
                             onClick={() => handleSelectOption(option)}
-                            disabled={hasAnswered}
+                            disabled={hasAnsweredCurrentStep}
                             className={`w-full text-left p-5 rounded-2xl border-2 transition-all duration-200 ${
-                              hasAnswered
+                              hasAnsweredCurrentStep
                                 ? option.isCorrect
                                   ? 'bg-green-50 border-green-400 cursor-default'
                                   : isSelected
-                                    ? 'bg-red-50 border-red-400 cursor-default'
-                                    : 'bg-white border-gray-200 cursor-default opacity-60'
+                                    ? 'bg-red-50 border-red-400 cursor-default shadow-lg'
+                                    : 'bg-white border-gray-200 cursor-default opacity-50'
                                 : 'bg-white border-gray-200 hover:border-[#1A73E8] hover:bg-blue-50/50 cursor-pointer hover:shadow-lg hover:-translate-y-0.5'
                             }`}
                           >
                             <div className="flex items-start gap-4">
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm ${
-                                hasAnswered
+                                hasAnsweredCurrentStep
                                   ? option.isCorrect
                                     ? 'bg-green-500 text-white'
                                     : isSelected
@@ -397,9 +416,9 @@ export default function PracticePage() {
                                       : 'bg-gray-200 text-gray-600'
                                   : 'bg-gray-100 text-gray-600 group-hover:bg-[#1A73E8] group-hover:text-white'
                               }`}>
-                                {hasAnswered && option.isCorrect ? (
+                                {hasAnsweredCurrentStep && option.isCorrect ? (
                                   <CheckCircle2 className="w-5 h-5" />
-                                ) : hasAnswered && isSelected ? (
+                                ) : hasAnsweredCurrentStep && isSelected ? (
                                   <XCircle className="w-5 h-5" />
                                 ) : (
                                   String.fromCharCode(65 + index)
@@ -407,17 +426,26 @@ export default function PracticePage() {
                               </div>
                               <div className="flex-1">
                                 <p className={`leading-relaxed ${
-                                  hasAnswered && option.isCorrect
+                                  hasAnsweredCurrentStep && option.isCorrect
                                     ? 'text-green-800 font-medium'
-                                    : hasAnswered && isSelected
+                                    : hasAnsweredCurrentStep && isSelected
                                       ? 'text-red-800'
                                       : 'text-gray-700'
                                 }`}>
                                   {option.content}
                                 </p>
-                                {!hasAnswered && (
+                                {!hasAnsweredCurrentStep && (
                                   <div className="mt-2 flex items-center gap-2">
                                     <span className="text-xs text-gray-400">
+                                      得分: {option.score} 分
+                                    </span>
+                                  </div>
+                                )}
+                                {hasAnsweredCurrentStep && isSelected && (
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <span className={`text-xs font-medium ${
+                                      lastOptionSelected?.isCorrect ? 'text-green-600' : 'text-red-600'
+                                    }`}>
                                       得分: {option.score} 分
                                     </span>
                                   </div>
@@ -429,6 +457,37 @@ export default function PracticePage() {
                       })}
                     </AnimatePresence>
                   </div>
+
+                  <AnimatePresence>
+                    {hasAnsweredCurrentStep && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ delay: 0.3 }}
+                        className="mt-6 pt-6 border-t border-gray-200"
+                      >
+                        <div className="flex justify-center gap-4">
+                          <Button
+                            variant="outline"
+                            onClick={handleReopenFeedback}
+                            className="gap-2"
+                          >
+                            <FileText className="w-4 h-4" />
+                            查看反馈
+                          </Button>
+                          <Button
+                            variant="primary"
+                            onClick={handleNext}
+                            className="gap-2"
+                          >
+                            {isLastStep ? '查看最终结果' : '下一步'}
+                            <ArrowLeft className="w-4 h-4 rotate-180" />
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </CardContent>
               </Card>
             </motion.div>
@@ -441,8 +500,6 @@ export default function PracticePage() {
         feedback={currentFeedback}
         stepName={currentStep.stepName}
         onClose={closeFeedback}
-        onNext={handleNext}
-        isLastStep={isLastStep}
       />
     </div>
   );
