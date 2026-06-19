@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ArrowLeft, 
@@ -15,7 +15,11 @@ import {
   Home,
   Clock,
   History,
-  BookOpen
+  BookOpen,
+  MessageSquare,
+  X,
+  CheckCheck,
+  ListTodo
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -23,17 +27,32 @@ import { Badge } from '@/components/ui/Badge';
 import { getCaseById } from '@/data/cases';
 import { getRecordTemplateByCaseId } from '@/data/records';
 import { calculateRecordScore, highlightDifferences } from '@/utils/textComparison';
-import { getLastRecordTrainingResult } from '@/utils/storage';
+import { 
+  getLastRecordTrainingResult,
+  getLatestUnseenComment,
+  markCommentAsSeen,
+  markCommentAsFollowedUp,
+  getRecordTrainingResultsByCase
+} from '@/utils/storage';
 import { getSectionName } from '@/utils/statistics';
 import { useAppStore } from '@/store/appStore';
-import type { PatientAnswer, RecordTrainingResult } from '@/types';
+import type { PatientAnswer, RecordTrainingResult, TeacherComment } from '@/types';
 
 export default function RecordTrainingPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const saveRecordResult = useAppStore(state => state.saveRecordResult);
   const userData = useAppStore(state => state.userData);
-  const currentStudent = userData.students.find(s => s.id === userData.currentStudentId);
+  const recordTrainingFilterStudentId = useAppStore(state => state.recordTrainingFilterStudentId);
+  const setRecordTrainingFilterStudentId = useAppStore(state => state.setRecordTrainingFilterStudentId);
+  
+  const urlStudentId = searchParams.get('studentId');
+  const effectiveStudentId = urlStudentId || recordTrainingFilterStudentId || userData.currentStudentId;
+  
+  const currentStudent = useMemo(() => {
+    return userData.students.find(s => s.id === effectiveStudentId) || userData.students.find(s => s.id === userData.currentStudentId);
+  }, [userData, effectiveStudentId]);
   
   const [currentAnswerIndex, setCurrentAnswerIndex] = useState(0);
   const [userRecord, setUserRecord] = useState('');
@@ -43,6 +62,23 @@ export default function RecordTrainingPage() {
   const [lastRecord, setLastRecord] = useState<RecordTrainingResult | null>(null);
   const [showLastRecord, setShowLastRecord] = useState(false);
   const [showLastReference, setShowLastReference] = useState(false);
+  const [latestComment, setLatestComment] = useState<TeacherComment | null>(null);
+  const [showCommentAlert, setShowCommentAlert] = useState(false);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [pendingFollowUpComment, setPendingFollowUpComment] = useState<TeacherComment | null>(null);
+  const [selectedHistoryRecord, setSelectedHistoryRecord] = useState<RecordTrainingResult | null>(null);
+  const [showHistoryDetail, setShowHistoryDetail] = useState(false);
+  
+  const historyRecords = useMemo(() => {
+    if (!caseId || !effectiveStudentId) return [];
+    return getRecordTrainingResultsByCase(caseId, effectiveStudentId);
+  }, [caseId, effectiveStudentId]);
+
+  useEffect(() => {
+    if (urlStudentId) {
+      setRecordTrainingFilterStudentId(urlStudentId);
+    }
+  }, [urlStudentId, setRecordTrainingFilterStudentId]);
   
   const caseData = caseId ? getCaseById(caseId) : undefined;
   const recordTemplate = caseId ? getRecordTemplateByCaseId(caseId) : undefined;
@@ -62,6 +98,62 @@ export default function RecordTrainingPage() {
       setLastRecord(null);
     }
   }, [caseId, currentStudent?.id]);
+  
+  useEffect(() => {
+    if (caseId && currentStudent) {
+      const comment = getLatestUnseenComment(currentStudent.id, caseId);
+      if (comment) {
+        setLatestComment(comment);
+        setShowCommentAlert(true);
+        setPendingFollowUpComment(comment);
+      }
+    }
+  }, [caseId, currentStudent]);
+  
+  const formatCommentTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  
+  const getContentSummary = (content: string, maxLength: number = 50) => {
+    return content.length > maxLength ? content.slice(0, maxLength) + '...' : content;
+  };
+  
+  const handleViewComment = () => {
+    if (latestComment) {
+      markCommentAsSeen(latestComment.id);
+      setShowCommentModal(true);
+    }
+  };
+  
+  const handleCloseCommentModal = () => {
+    setShowCommentModal(false);
+    setShowCommentAlert(false);
+    setLatestComment(null);
+  };
+  
+  const handleMarkFollowedUp = () => {
+    if (pendingFollowUpComment) {
+      markCommentAsFollowedUp(pendingFollowUpComment.id);
+      setPendingFollowUpComment(null);
+    }
+  };
+
+  const handleViewHistoryRecord = (record: RecordTrainingResult) => {
+    setSelectedHistoryRecord(record);
+    setShowHistoryDetail(true);
+  };
+
+  const handleCloseHistoryDetail = () => {
+    setShowHistoryDetail(false);
+    setSelectedHistoryRecord(null);
+  };
   
   if (!caseData || !recordTemplate) {
     return (
@@ -181,10 +273,54 @@ export default function RecordTrainingPage() {
   const lastReferenceHighlighted = lastRecord && (showLastRecord || showLastReference)
     ? highlightDifferences(lastRecord.userRecord, recordTemplate.referenceRecord).referenceHighlighted
     : '';
+
+  const historyUserHighlighted = selectedHistoryRecord && showHistoryDetail
+    ? highlightDifferences(selectedHistoryRecord.userRecord, recordTemplate.referenceRecord).userHighlighted
+    : '';
+
+  const historyReferenceHighlighted = selectedHistoryRecord && showHistoryDetail
+    ? highlightDifferences(selectedHistoryRecord.userRecord, recordTemplate.referenceRecord).referenceHighlighted
+    : '';
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F8FAFC] via-[#EEF2FF] to-[#F0FDF4] py-8">
-      <div className="max-w-7xl mx-auto px-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#F8FAFC] via-[#EEF2FF] to-[#F0FDF4]">
+      <AnimatePresence>
+        {showCommentAlert && latestComment && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="sticky top-0 z-40"
+          >
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-3 shadow-lg">
+              <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">
+                      老师有新批注：{getContentSummary(latestComment.content)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleViewComment}
+                    className="bg-white text-amber-600 hover:bg-amber-50 border-0"
+                  >
+                    查看详情
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
             <ArrowLeft className="w-4 h-4" />
@@ -647,7 +783,7 @@ export default function RecordTrainingPage() {
                     exit={{ opacity: 0, height: 0 }}
                     className="overflow-hidden"
                   >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                       <Card>
                         <CardHeader>
                           <h3 className="font-bold text-gray-800">您的记录</h3>
@@ -671,6 +807,56 @@ export default function RecordTrainingPage() {
                           />
                         </CardContent>
                       </Card>
+
+                      <Card>
+                        <CardHeader>
+                          <div className="flex items-center gap-2">
+                            <History className="w-5 h-5 text-blue-500" />
+                            <h3 className="font-bold text-gray-800">{currentStudent?.name || '该学员'}的历史记录</h3>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          {historyRecords.length > 0 ? (
+                            <div className="space-y-2 max-h-96 overflow-y-auto">
+                              {historyRecords.map((record, index) => (
+                                <motion.div
+                                  key={record.id}
+                                  initial={{ opacity: 0, x: 20 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: index * 0.03 }}
+                                  onClick={() => handleViewHistoryRecord(record)}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
+                                    selectedHistoryRecord?.id === record.id
+                                      ? 'border-blue-500 bg-blue-50'
+                                      : 'border-gray-200 hover:border-blue-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs text-gray-500">
+                                      {formatTime(record.timestamp)}
+                                    </span>
+                                    <span className={`font-bold ${getScoreColor(record.totalScore)}`}>
+                                      {record.totalScore}分
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    <span>关键词 {record.keywordScore}%</span>
+                                    <span>·</span>
+                                    <span>相似度 {record.textSimilarity}%</span>
+                                    <span>·</span>
+                                    <span>结构 {record.structureScore}%</span>
+                                  </div>
+                                </motion.div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-gray-500">
+                              <History className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                              <p className="text-sm">暂无历史记录</p>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
                     </div>
                     
                     <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
@@ -685,6 +871,141 @@ export default function RecordTrainingPage() {
                         </div>
                       </div>
                     </div>
+
+                    <AnimatePresence>
+                      {showHistoryDetail && selectedHistoryRecord && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="overflow-hidden mt-6"
+                        >
+                          <Card className="border-blue-200 bg-blue-50/30">
+                            <CardHeader>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <History className="w-5 h-5 text-blue-500" />
+                                  <h3 className="font-bold text-gray-800">
+                                    历史记录详情 - {formatTime(selectedHistoryRecord.timestamp)}
+                                  </h3>
+                                  <Badge className={getScoreColor(selectedHistoryRecord.totalScore)} size="sm">
+                                    {selectedHistoryRecord.totalScore}分
+                                  </Badge>
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={handleCloseHistoryDetail}>
+                                  收起
+                                </Button>
+                              </div>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+                                <div className="text-center bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4">
+                                  <p className="text-2xl font-bold text-blue-600">{selectedHistoryRecord.keywordScore}%</p>
+                                  <p className="text-xs text-gray-600">关键词匹配</p>
+                                </div>
+                                <div className="text-center bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4">
+                                  <p className="text-2xl font-bold text-green-600">{selectedHistoryRecord.textSimilarity}%</p>
+                                  <p className="text-xs text-gray-600">文本相似度</p>
+                                </div>
+                                <div className="text-center bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-4">
+                                  <p className="text-2xl font-bold text-purple-600">{selectedHistoryRecord.structureScore}%</p>
+                                  <p className="text-xs text-gray-600">结构完整度</p>
+                                </div>
+                              </div>
+                              
+                              {selectedHistoryRecord.missingSections.length > 0 && (
+                                <div className="mb-5 p-4 bg-red-50 rounded-xl border border-red-100">
+                                  <p className="text-sm font-medium text-red-700 mb-2">缺少的结构：</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {selectedHistoryRecord.missingSections.map((section, index) => (
+                                      <Badge key={index} variant="danger" size="sm">
+                                        {getSectionName(section)}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Card>
+                                  <CardHeader>
+                                    <h4 className="font-bold text-gray-800 text-sm">当时记录</h4>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div 
+                                      className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto"
+                                      dangerouslySetInnerHTML={{ __html: historyUserHighlighted }}
+                                    />
+                                  </CardContent>
+                                </Card>
+                                
+                                <Card>
+                                  <CardHeader>
+                                    <h4 className="font-bold text-gray-800 text-sm">参考写法</h4>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div 
+                                      className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto"
+                                      dangerouslySetInnerHTML={{ __html: historyReferenceHighlighted }}
+                                    />
+                                  </CardContent>
+                                </Card>
+                              </div>
+                              
+                              <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+                                <div className="flex items-start gap-2">
+                                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-sm font-medium text-yellow-800 mb-1">标注说明</p>
+                                    <p className="text-sm text-yellow-700">
+                                      <span className="bg-red-100 text-red-700 px-1 rounded">红色</span> 表示记录中有但参考中没有的内容，
+                                      <span className="bg-green-100 text-green-700 px-1 rounded">绿色</span> 表示参考中有但遗漏的内容。
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              
+              <AnimatePresence>
+                {pendingFollowUpComment && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="mb-6"
+                  >
+                    <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+                      <CardContent className="p-5">
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md">
+                              <MessageSquare className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-gray-800">老师批注待跟进</h3>
+                              <p className="text-sm text-gray-600">
+                                完成记录训练后，请标记已跟进老师的批注要求
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="primary"
+                            onClick={handleMarkFollowedUp}
+                            className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 border-0"
+                          >
+                            <CheckCheck className="w-4 h-4" />
+                            标记改练已跟进
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -707,6 +1028,98 @@ export default function RecordTrainingPage() {
           )}
         </AnimatePresence>
       </div>
+      
+      <AnimatePresence>
+        {showCommentModal && latestComment && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={handleCloseCommentModal}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">老师批注详情</h3>
+                    <p className="text-sm text-white/80">{latestComment.caseTitle}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleCloseCommentModal}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto max-h-[60vh]">
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      创建时间
+                    </h4>
+                    <p className="text-gray-800">{formatCommentTime(latestComment.createdAt)}</p>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      批注内容
+                    </h4>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                        {latestComment.content}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {latestComment.actionItems && latestComment.actionItems.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+                        <ListTodo className="w-4 h-4" />
+                        待办要点
+                      </h4>
+                      <div className="space-y-2">
+                        {latestComment.actionItems.map((item, index) => (
+                          <div key={index} className="flex items-start gap-3 bg-amber-50 rounded-lg p-3">
+                            <div className="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center flex-shrink-0 text-sm font-bold">
+                              {index + 1}
+                            </div>
+                            <p className="text-gray-800 text-sm">{item}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+                <Button
+                  variant="primary"
+                  onClick={handleCloseCommentModal}
+                  className="w-full gap-2"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  我已了解
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

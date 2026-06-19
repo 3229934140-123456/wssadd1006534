@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -12,7 +12,12 @@ import {
   Trophy,
   RotateCcw,
   Home,
-  Target
+  Target,
+  MessageSquare,
+  X,
+  CheckCheck,
+  Clock,
+  ListTodo
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -23,7 +28,12 @@ import { getCaseById } from '@/data/cases';
 import { getDialoguesByCaseId } from '@/data/dialogues';
 import { useAppStore } from '@/store/appStore';
 import { getStepNameChinese } from '@/utils/scoring';
-import type { DialogueOption, StepName } from '@/types';
+import { 
+  getLatestUnseenComment, 
+  markCommentAsSeen, 
+  markCommentAsFollowedUp 
+} from '@/utils/storage';
+import type { DialogueOption, StepName, TeacherComment } from '@/types';
 
 export default function PracticePage() {
   const { caseId } = useParams<{ caseId: string }>();
@@ -41,8 +51,18 @@ export default function PracticePage() {
     nextStep,
     closeFeedback,
     reopenFeedback,
-    resetPractice
+    resetPractice,
+    userData
   } = useAppStore();
+  
+  const currentStudent = useMemo(() => {
+    return userData.students.find(s => s.id === userData.currentStudentId);
+  }, [userData]);
+  
+  const [latestComment, setLatestComment] = useState<TeacherComment | null>(null);
+  const [showCommentAlert, setShowCommentAlert] = useState(false);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [pendingFollowUpComment, setPendingFollowUpComment] = useState<TeacherComment | null>(null);
   
   const caseData = caseId ? getCaseById(caseId) : undefined;
   const dialogues = caseId ? getDialoguesByCaseId(caseId) : [];
@@ -56,6 +76,52 @@ export default function PracticePage() {
       resetPractice();
     };
   }, [caseId, caseData, dialogues]);
+  
+  useEffect(() => {
+    if (caseId && currentStudent) {
+      const comment = getLatestUnseenComment(currentStudent.id, caseId);
+      if (comment) {
+        setLatestComment(comment);
+        setShowCommentAlert(true);
+        setPendingFollowUpComment(comment);
+      }
+    }
+  }, [caseId, currentStudent]);
+  
+  const formatCommentTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  
+  const getContentSummary = (content: string, maxLength: number = 50) => {
+    return content.length > maxLength ? content.slice(0, maxLength) + '...' : content;
+  };
+  
+  const handleViewComment = () => {
+    if (latestComment) {
+      markCommentAsSeen(latestComment.id);
+      setShowCommentModal(true);
+    }
+  };
+  
+  const handleCloseCommentModal = () => {
+    setShowCommentModal(false);
+    setShowCommentAlert(false);
+    setLatestComment(null);
+  };
+  
+  const handleMarkFollowedUp = () => {
+    if (pendingFollowUpComment) {
+      markCommentAsFollowedUp(pendingFollowUpComment.id);
+      setPendingFollowUpComment(null);
+    }
+  };
   
   const currentStep = practiceState.steps[practiceState.currentStepIndex];
   const isLastStep = practiceState.currentStepIndex === practiceState.steps.length - 1;
@@ -233,6 +299,43 @@ export default function PracticePage() {
             </CardContent>
           </motion.div>
           
+          <AnimatePresence>
+            {pendingFollowUpComment && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="mb-6"
+              >
+                <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+                  <CardContent className="p-5">
+                    <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md">
+                          <MessageSquare className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-800">老师批注待跟进</h3>
+                          <p className="text-sm text-gray-600">
+                            完成练习后，请标记已跟进老师的批注要求
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="primary"
+                        onClick={handleMarkFollowedUp}
+                        className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 border-0"
+                      >
+                        <CheckCheck className="w-4 h-4" />
+                        标记改练已跟进
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -263,6 +366,42 @@ export default function PracticePage() {
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F8FAFC] via-[#EEF2FF] to-[#F0FDF4]">
+      <AnimatePresence>
+        {showCommentAlert && latestComment && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="sticky top-0 z-40"
+          >
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-3 shadow-lg">
+              <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">
+                      老师有新批注：{getContentSummary(latestComment.content)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleViewComment}
+                    className="bg-white text-amber-600 hover:bg-amber-50 border-0"
+                  >
+                    查看详情
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-center justify-between mb-6">
           <Button variant="ghost" onClick={handleBack} className="gap-2">
@@ -501,6 +640,98 @@ export default function PracticePage() {
         stepName={currentStep.stepName}
         onClose={closeFeedback}
       />
+      
+      <AnimatePresence>
+        {showCommentModal && latestComment && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={handleCloseCommentModal}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">老师批注详情</h3>
+                    <p className="text-sm text-white/80">{latestComment.caseTitle}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleCloseCommentModal}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto max-h-[60vh]">
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      创建时间
+                    </h4>
+                    <p className="text-gray-800">{formatCommentTime(latestComment.createdAt)}</p>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      批注内容
+                    </h4>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                        {latestComment.content}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {latestComment.actionItems && latestComment.actionItems.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+                        <ListTodo className="w-4 h-4" />
+                        待办要点
+                      </h4>
+                      <div className="space-y-2">
+                        {latestComment.actionItems.map((item, index) => (
+                          <div key={index} className="flex items-start gap-3 bg-amber-50 rounded-lg p-3">
+                            <div className="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center flex-shrink-0 text-sm font-bold">
+                              {index + 1}
+                            </div>
+                            <p className="text-gray-800 text-sm">{item}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+                <Button
+                  variant="primary"
+                  onClick={handleCloseCommentModal}
+                  className="w-full gap-2"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  我已了解
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

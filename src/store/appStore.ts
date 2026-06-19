@@ -32,6 +32,9 @@ interface AppState {
   stepResults: StepResult[];
   lastOptionSelected: DialogueOption | null;
   hasAnsweredCurrentStep: boolean;
+  selectedStudentId: string | null;
+  viewMode: 'class' | 'individual';
+  recordTrainingFilterStudentId: string | null;
   
   loadUserData: () => void;
   startPractice: (caseData: CaseScene, steps: DialogueStep[]) => void;
@@ -47,6 +50,9 @@ interface AppState {
   saveRecordResult: (result: Omit<RecordTrainingResult, 'id' | 'timestamp' | 'studentId' | 'studentName'>) => void;
   switchStudent: (studentId: string) => void;
   setCurrentStudentLocal: (student: Student) => void;
+  setSelectedStudentId: (id: string | null) => void;
+  setViewMode: (mode: 'class' | 'individual') => void;
+  setRecordTrainingFilterStudentId: (id: string | null) => void;
 }
 
 const initialPracticeState: PracticeState = {
@@ -69,6 +75,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   stepResults: [],
   lastOptionSelected: null,
   hasAnsweredCurrentStep: false,
+  selectedStudentId: null,
+  viewMode: 'class',
+  recordTrainingFilterStudentId: null,
   
   loadUserData: () => {
     set({ userData: getUserData() });
@@ -279,6 +288,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     userData.currentStudentId = student.id;
     saveUserData(userData);
     set({ userData: getUserData() });
+  },
+
+  setSelectedStudentId: (id) => {
+    set({ selectedStudentId: id });
+  },
+
+  setViewMode: (mode) => {
+    set({ viewMode: mode });
+  },
+
+  setRecordTrainingFilterStudentId: (id) => {
+    set({ recordTrainingFilterStudentId: id });
   }
 }));
 

@@ -139,6 +139,8 @@ export interface UserData {
   wrongAnswers: WrongAnswer[];
   recordTrainingResults: RecordTrainingResult[];
   practiceSuggestions: StudentPracticeSuggestion[];
+  morningReviewChecklists: MorningReviewChecklist[];
+  teacherComments: TeacherComment[];
   currentStudentId: string;
   students: Student[];
 }
@@ -247,6 +249,52 @@ export interface TeacherWorkbenchData {
     improvement: number;
   }[];
   todayMorningReview: MorningReviewPackage;
+}
+
+export interface MorningReviewChecklistItem {
+  type: 'category' | 'student';
+  targetId: string;
+  targetName: string;
+  selected: boolean;
+  completed: boolean;
+  notes?: string;
+  order: number;
+}
+
+export interface MorningReviewChecklist {
+  id: string;
+  date: string;
+  items: MorningReviewChecklistItem[];
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TeacherComment {
+  id: string;
+  studentId: string;
+  studentName: string;
+  type: 'dialogue' | 'record';
+  caseId: string;
+  caseTitle: string;
+  practiceId?: string;
+  recordResultId?: string;
+  content: string;
+  actionItems?: string[];
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  followedUp: boolean;
+  followedUpAt?: number;
+  seenByStudent: boolean;
+  seenAt?: number;
+}
+
+export interface FilterState {
+  caseId: string | null;
+  studentId: string | null;
+  category: MissingCategory | null;
+  dateRange: 'all' | 'today' | 'week' | 'month';
 }
 
 export interface StepResult {

@@ -521,3 +521,121 @@ export const generateTeacherWorkbenchData = (
   };
 };
 
+export const filterWrongAnswers = (
+  wrongAnswers: WrongAnswer[],
+  filters: {
+    caseId?: string | null;
+    studentId?: string | null;
+    category?: MissingCategory | null;
+    dateRange?: 'all' | 'today' | 'week' | 'month';
+  }
+): WrongAnswer[] => {
+  let filtered = [...wrongAnswers];
+  
+  if (filters.caseId) {
+    filtered = filtered.filter(wa => wa.caseId === filters.caseId);
+  }
+  
+  if (filters.studentId) {
+    filtered = filtered.filter(wa => wa.studentId === filters.studentId);
+  }
+  
+  if (filters.category) {
+    filtered = filtered.filter(wa => {
+      const categories = wa.missingCategories && wa.missingCategories.length > 0 ? wa.missingCategories : [wa.missingCategory];
+      return categories.includes(filters.category!);
+    });
+  }
+  
+  if (filters.dateRange && filters.dateRange !== 'all') {
+    const now = new Date();
+    let startDate: Date;
+    
+    switch (filters.dateRange) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week':
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate = new Date(now);
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      default:
+        return filtered;
+    }
+    
+    filtered = filtered.filter(wa => wa.timestamp >= startDate.getTime());
+  }
+  
+  return filtered;
+};
+
+export const filterRecordResults = (
+  recordResults: RecordTrainingResult[],
+  filters: {
+    caseId?: string | null;
+    studentId?: string | null;
+    dateRange?: 'all' | 'today' | 'week' | 'month';
+  }
+): RecordTrainingResult[] => {
+  let filtered = [...recordResults];
+  
+  if (filters.caseId) {
+    filtered = filtered.filter(r => r.caseId === filters.caseId);
+  }
+  
+  if (filters.studentId) {
+    filtered = filtered.filter(r => r.studentId === filters.studentId);
+  }
+  
+  if (filters.dateRange && filters.dateRange !== 'all') {
+    const now = new Date();
+    let startDate: Date;
+    
+    switch (filters.dateRange) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week':
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate = new Date(now);
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      default:
+        return filtered;
+    }
+    
+    filtered = filtered.filter(r => r.timestamp >= startDate.getTime());
+  }
+  
+  return filtered;
+};
+
+export const getFilterOptions = (
+  wrongAnswers: WrongAnswer[],
+  recordResults: RecordTrainingResult[],
+  students: Student[]
+) => {
+  const caseMap = new Map<string, string>();
+  wrongAnswers.forEach(wa => caseMap.set(wa.caseId, wa.caseTitle));
+  recordResults.forEach(r => caseMap.set(r.caseId, r.caseTitle));
+  const caseOptions = Array.from(caseMap.entries()).map(([id, title]) => ({ id, title }));
+  
+  const categoryOptions = (['brushing', 'floss', 'sensitivity', 'recheck', 'diet', 'hygiene', 'symptom', 'emotional', 'other'] as MissingCategory[]).map(cat => ({
+    id: cat,
+    name: getCategoryName(cat)
+  }));
+  
+  return {
+    caseOptions,
+    studentOptions: students.map(s => ({ id: s.id, name: s.name })),
+    categoryOptions
+  };
+};
+

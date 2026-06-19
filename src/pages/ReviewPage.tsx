@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -13,14 +13,16 @@ import {
   ListOrdered,
   CheckCircle2,
   XCircle,
-  Lightbulb
+  Lightbulb,
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/store/appStore';
 import { getCaseById } from '@/data/cases';
-import { getCategoryReviews, getCategoryName } from '@/utils/statistics';
+import { getCategoryReviews, getCategoryName, filterWrongAnswers, getFilterOptions } from '@/utils/statistics';
 import type { MissingCategory, CategoryReview, WrongAnswer } from '@/types';
 
 const categoryColors: Record<MissingCategory, { bg: string; text: string; bar: string; ring: string }> = {
@@ -52,26 +54,49 @@ export default function ReviewPage() {
   const { userData, clearWrongAnswers } = useAppStore();
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'this_week' | 'this_month'>('all');
   const [expandedCategory, setExpandedCategory] = useState<MissingCategory | null>(null);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<MissingCategory | null>(null);
   
   const wrongAnswers = userData.wrongAnswers || [];
+  const students = userData.students || [];
+  const recordResults = userData.recordTrainingResults || [];
   
-  const filteredWrongAnswers = wrongAnswers.filter(item => {
-    if (selectedFilter === 'all') return true;
-    const date = new Date(item.timestamp);
-    const now = new Date();
-    if (selectedFilter === 'this_week') {
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return date >= weekAgo;
-    }
-    if (selectedFilter === 'this_month') {
-      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return date >= monthAgo;
-    }
-    return true;
-  });
+  const filterOptions = useMemo(() => {
+    return getFilterOptions(wrongAnswers, recordResults, students);
+  }, [wrongAnswers, recordResults, students]);
+  
+  const fixedCaseOptions = [
+    { id: 'case-001', title: '第一次洗牙后牙齿酸软的年轻患者' },
+    { id: 'case-002', title: '牙周维护依从性差的中年患者' },
+    { id: 'case-003', title: '家长代儿童咨询洁治后出血' }
+  ];
+  
+  const dateRangeMap: Record<'all' | 'this_week' | 'this_month', 'all' | 'week' | 'month'> = {
+    'all': 'all',
+    'this_week': 'week',
+    'this_month': 'month'
+  };
+  
+  const filteredWrongAnswers = useMemo(() => {
+    return filterWrongAnswers(wrongAnswers, {
+      caseId: selectedCaseId,
+      studentId: selectedStudentId,
+      category: selectedCategory,
+      dateRange: dateRangeMap[selectedFilter]
+    });
+  }, [wrongAnswers, selectedCaseId, selectedStudentId, selectedCategory, selectedFilter]);
   
   const categoryReviews = getCategoryReviews(filteredWrongAnswers);
   const top3Categories = categoryReviews.slice(0, 3);
+  
+  const handleResetFilters = () => {
+    setSelectedCaseId(null);
+    setSelectedStudentId(null);
+    setSelectedCategory(null);
+    setSelectedFilter('all');
+    setExpandedCategory(null);
+  };
   
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -204,32 +229,103 @@ export default function ReviewPage() {
           </Card>
         )}
         
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex gap-2">
-            {(['all', 'this_week', 'this_month'] as const).map((filter) => (
+        <Card className="mb-4">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">筛选：</span>
+              </div>
+              
+              <div className="flex gap-2 flex-wrap">
+                {(['all', 'this_week', 'this_month'] as const).map((filter) => (
+                  <Button
+                    key={filter}
+                    variant={selectedFilter === filter ? 'primary' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedFilter(filter)}
+                  >
+                    {filter === 'all' ? '全部时间' : filter === 'this_week' ? '本周' : '本月'}
+                  </Button>
+                ))}
+              </div>
+              
+              <div className="w-px h-6 bg-gray-200 mx-1" />
+              
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">病例：</span>
+                <select
+                  value={selectedCaseId || ''}
+                  onChange={(e) => setSelectedCaseId(e.target.value || null)}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A73E8]/50 focus:border-[#1A73E8] bg-white min-w-[180px]"
+                >
+                  <option value="">全部病例</option>
+                  {fixedCaseOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">学员：</span>
+                <select
+                  value={selectedStudentId || ''}
+                  onChange={(e) => setSelectedStudentId(e.target.value || null)}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A73E8]/50 focus:border-[#1A73E8] bg-white min-w-[140px]"
+                >
+                  <option value="">全部学员</option>
+                  {filterOptions.studentOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">环节：</span>
+                <select
+                  value={selectedCategory || ''}
+                  onChange={(e) => setSelectedCategory((e.target.value as MissingCategory) || null)}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A73E8]/50 focus:border-[#1A73E8] bg-white min-w-[140px]"
+                >
+                  <option value="">全部环节</option>
+                  {filterOptions.categoryOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex-1" />
+              
               <Button
-                key={filter}
-                variant={selectedFilter === filter ? 'primary' : 'outline'}
+                variant="outline"
                 size="sm"
-                onClick={() => setSelectedFilter(filter)}
+                onClick={handleResetFilters}
+                className="gap-2"
               >
-                {filter === 'all' ? '全部' : filter === 'this_week' ? '本周' : '本月'}
+                <RotateCcw className="w-4 h-4" />
+                重置筛选
               </Button>
-            ))}
-          </div>
-          
-          {wrongAnswers.length > 0 && (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handleClearAll}
-              className="gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              清空记录
-            </Button>
-          )}
-        </div>
+              
+              {wrongAnswers.length > 0 && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleClearAll}
+                  className="gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  清空记录
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
         
         {categoryReviews.length === 0 ? (
           <Card>

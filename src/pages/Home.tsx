@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
-import { Star, MessageCircle, FileText, AlertTriangle, Trophy, CheckCircle2, Target, BookOpen, Users, TrendingUp, TrendingDown, Calendar, ArrowUpRight, ArrowDownRight, ClipboardList, UserCheck } from 'lucide-react';
+import { Star, MessageCircle, FileText, AlertTriangle, Trophy, CheckCircle2, Target, BookOpen, Users, TrendingUp, TrendingDown, Calendar, ArrowUpRight, ArrowDownRight, ClipboardList, UserCheck, Clock, CheckSquare, ListTodo } from 'lucide-react';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { cases } from '@/data/cases';
 import { useAppStore } from '@/store/appStore';
-import { getBestScoreForCase, isCaseCompleted, getPracticeCountByCase, getRecordCountByCase } from '@/utils/storage';
+import { getBestScoreForCase, isCaseCompleted, getPracticeCountByCase, getRecordCountByCase, getChecklistStatsForDate } from '@/utils/storage';
 import { calculateReviewStats, generateTeacherWorkbenchData, getCategoryName } from '@/utils/statistics';
 import type { MissingCategory } from '@/types';
 
@@ -49,8 +49,11 @@ const categoryBadgeColors: Record<MissingCategory, string> = {
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { userData } = useAppStore();
+  const { userData, setSelectedStudentId, setViewMode, setRecordTrainingFilterStudentId } = useAppStore();
   const [hoveredCase, setHoveredCase] = useState<string | null>(null);
+
+  const today = new Date().toISOString().split('T')[0];
+  const checklistStats = useMemo(() => getChecklistStatsForDate(today), [today]);
   
   const stats = calculateReviewStats(
     userData.wrongAnswers,
@@ -91,6 +94,17 @@ export default function HomePage() {
   
   const handleStartRecord = (caseId: string) => {
     navigate(`/record/${caseId}`);
+  };
+
+  const handleFocusStudentClick = (studentId: string) => {
+    setSelectedStudentId(studentId);
+    setViewMode('individual');
+    navigate(`/teacher?studentId=${studentId}&viewMode=individual`);
+  };
+
+  const handleRecordPerformanceClick = (caseId: string, studentId: string) => {
+    setRecordTrainingFilterStudentId(studentId);
+    navigate(`/record/${caseId}?studentId=${studentId}`);
   };
   
   const container = {
@@ -239,6 +253,73 @@ export default function HomePage() {
                     <span>{formatDate(workbenchData.date)}</span>
                   </div>
                 </div>
+
+                <div className="mt-6 bg-white rounded-xl p-5 border border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-2 mb-4">
+                    <ListTodo className="w-5 h-5 text-blue-500" />
+                    <h3 className="text-lg font-bold text-gray-800">今日讲评安排</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="text-center p-3 bg-blue-50 rounded-lg">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <CheckSquare className="w-4 h-4 text-blue-500" />
+                        <span className="text-sm text-gray-500">已安排</span>
+                      </div>
+                      <p className="text-2xl font-bold text-blue-600">{checklistStats.selected}</p>
+                    </div>
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        <span className="text-sm text-gray-500">已完成</span>
+                      </div>
+                      <p className="text-2xl font-bold text-green-600">{checklistStats.completed}</p>
+                    </div>
+                    <div className="text-center p-3 bg-orange-50 rounded-lg">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <Clock className="w-4 h-4 text-orange-500" />
+                        <span className="text-sm text-gray-500">待讲</span>
+                      </div>
+                      <p className="text-2xl font-bold text-orange-600">{checklistStats.remaining}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">完成进度</span>
+                      <span className="font-medium text-gray-700">
+                        {checklistStats.selected > 0 
+                          ? Math.round((checklistStats.completed / checklistStats.selected) * 100) 
+                          : 0}%
+                      </span>
+                    </div>
+                    <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden flex">
+                      {checklistStats.selected > 0 && (
+                        <>
+                          <div 
+                            className="h-full bg-green-500 transition-all"
+                            style={{ width: `${(checklistStats.completed / checklistStats.selected) * 100}%` }}
+                          />
+                          <div 
+                            className="h-full bg-orange-400 transition-all"
+                            style={{ width: `${(checklistStats.remaining / checklistStats.selected) * 100}%` }}
+                          />
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-green-500 rounded-full" />
+                        <span>已完成</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-orange-400 rounded-full" />
+                        <span>待讲</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="mt-4 flex items-center gap-2">
                   <Trophy className="w-5 h-5 text-orange-500" />
                   <h3 className="text-lg font-bold text-gray-800">今日讲评重点</h3>
@@ -332,9 +413,9 @@ export default function HomePage() {
                             : 'bg-white border-gray-200';
                         
                         return (
-                          <Link 
+                          <div 
                             key={focus.student.id}
-                            to={`/teacher?studentId=${focus.student.id}`}
+                            onClick={() => handleFocusStudentClick(focus.student.id)}
                           >
                             <motion.div
                               initial={{ opacity: 0, y: 10 }}
@@ -376,7 +457,7 @@ export default function HomePage() {
                                 </Badge>
                               </div>
                             </motion.div>
-                          </Link>
+                          </div>
                         );
                       })}
                     </div>
@@ -403,9 +484,9 @@ export default function HomePage() {
                       {workbenchData.recentRecordPerformance
                         .filter(r => r.lastRecord)
                         .map((record, index) => (
-                          <Link 
+                          <div 
                             key={record.student.id}
-                            to={`/record/${record.lastRecord!.caseId}`}
+                            onClick={() => handleRecordPerformanceClick(record.lastRecord!.caseId, record.student.id)}
                           >
                             <motion.div
                               initial={{ opacity: 0, y: 10 }}
@@ -462,7 +543,7 @@ export default function HomePage() {
                                 )}
                               </div>
                             </motion.div>
-                          </Link>
+                          </div>
                         ))}
                     </div>
                   )}

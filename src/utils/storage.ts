@@ -1,4 +1,4 @@
-import type { UserData, WrongAnswer, PracticeScore, RecordTrainingResult, Student, MissingCategory, StudentPracticeSuggestion } from '@/types';
+import type { UserData, WrongAnswer, PracticeScore, RecordTrainingResult, Student, MissingCategory, StudentPracticeSuggestion, MorningReviewChecklist, MorningReviewChecklistItem, TeacherComment } from '@/types';
 
 const STORAGE_KEY = 'dental-followup-training-data';
 
@@ -19,6 +19,8 @@ const defaultUserData: UserData = {
   wrongAnswers: [],
   recordTrainingResults: [],
   practiceSuggestions: [],
+  morningReviewChecklists: [],
+  teacherComments: [],
   currentStudentId: 'stu-001',
   students: mockStudents
 };
@@ -286,5 +288,137 @@ export const deletePracticeSuggestion = (suggestionId: string): void => {
   const userData = getUserData();
   userData.practiceSuggestions = userData.practiceSuggestions.filter(s => s.id !== suggestionId);
   saveUserData(userData);
+};
+
+export const saveMorningReviewChecklist = (checklist: Omit<MorningReviewChecklist, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): MorningReviewChecklist => {
+  const userData = getUserData();
+  const now = Date.now();
+  
+  if (checklist.id) {
+    const existingIndex = userData.morningReviewChecklists.findIndex(c => c.id === checklist.id);
+    if (existingIndex >= 0) {
+      userData.morningReviewChecklists[existingIndex] = {
+        ...userData.morningReviewChecklists[existingIndex],
+        ...checklist,
+        updatedAt: now
+      };
+      saveUserData(userData);
+      return userData.morningReviewChecklists[existingIndex];
+    }
+  }
+  
+  const newChecklist: MorningReviewChecklist = {
+    ...checklist,
+    id: 'checklist-' + now + '-' + Math.random().toString(36).substr(2, 9),
+    createdAt: now,
+    updatedAt: now
+  };
+  userData.morningReviewChecklists.push(newChecklist);
+  saveUserData(userData);
+  return newChecklist;
+};
+
+export const getMorningReviewChecklistByDate = (date: string): MorningReviewChecklist | null => {
+  const userData = getUserData();
+  return userData.morningReviewChecklists.find(c => c.date === date) || null;
+};
+
+export const updateChecklistItem = (checklistId: string, itemIndex: number, updates: Partial<MorningReviewChecklistItem>): void => {
+  const userData = getUserData();
+  const checklist = userData.morningReviewChecklists.find(c => c.id === checklistId);
+  if (checklist && checklist.items[itemIndex]) {
+    checklist.items[itemIndex] = { ...checklist.items[itemIndex], ...updates };
+    checklist.updatedAt = Date.now();
+    saveUserData(userData);
+  }
+};
+
+export const addTeacherComment = (comment: Omit<TeacherComment, 'id' | 'createdAt' | 'updatedAt' | 'followedUp' | 'seenByStudent'>): TeacherComment => {
+  const userData = getUserData();
+  const now = Date.now();
+  const newComment: TeacherComment = {
+    ...comment,
+    id: 'comment-' + now + '-' + Math.random().toString(36).substr(2, 9),
+    createdAt: now,
+    updatedAt: now,
+    followedUp: false,
+    seenByStudent: false
+  };
+  userData.teacherComments.push(newComment);
+  saveUserData(userData);
+  return newComment;
+};
+
+export const getTeacherCommentsByStudent = (studentId: string): TeacherComment[] => {
+  const userData = getUserData();
+  return userData.teacherComments
+    .filter(c => c.studentId === studentId)
+    .sort((a, b) => b.createdAt - a.createdAt);
+};
+
+export const getTeacherCommentsByCase = (studentId: string, caseId: string): TeacherComment[] => {
+  const userData = getUserData();
+  return userData.teacherComments
+    .filter(c => c.studentId === studentId && c.caseId === caseId)
+    .sort((a, b) => b.createdAt - a.createdAt);
+};
+
+export const getLatestUnseenComment = (studentId: string, caseId?: string): TeacherComment | null => {
+  const userData = getUserData();
+  let comments = userData.teacherComments.filter(c => c.studentId === studentId && !c.seenByStudent && !c.followedUp);
+  if (caseId) {
+    comments = comments.filter(c => c.caseId === caseId);
+  }
+  return comments.length > 0 ? comments[0] : null;
+};
+
+export const markCommentAsSeen = (commentId: string): void => {
+  const userData = getUserData();
+  const comment = userData.teacherComments.find(c => c.id === commentId);
+  if (comment) {
+    comment.seenByStudent = true;
+    comment.seenAt = Date.now();
+    saveUserData(userData);
+  }
+};
+
+export const markCommentAsFollowedUp = (commentId: string): void => {
+  const userData = getUserData();
+  const comment = userData.teacherComments.find(c => c.id === commentId);
+  if (comment) {
+    comment.followedUp = true;
+    comment.followedUpAt = Date.now();
+    saveUserData(userData);
+  }
+};
+
+export const updateTeacherComment = (commentId: string, updates: Partial<TeacherComment>): void => {
+  const userData = getUserData();
+  const comment = userData.teacherComments.find(c => c.id === commentId);
+  if (comment) {
+    Object.assign(comment, updates, { updatedAt: Date.now() });
+    saveUserData(userData);
+  }
+};
+
+export const deleteTeacherComment = (commentId: string): void => {
+  const userData = getUserData();
+  userData.teacherComments = userData.teacherComments.filter(c => c.id !== commentId);
+  saveUserData(userData);
+};
+
+export const getChecklistStatsForDate = (date: string) => {
+  const checklist = getMorningReviewChecklistByDate(date);
+  if (!checklist) {
+    return { total: 0, selected: 0, completed: 0, remaining: 0 };
+  }
+  const selectedItems = checklist.items.filter(i => i.selected);
+  const completedItems = selectedItems.filter(i => i.completed);
+  return {
+    total: checklist.items.length,
+    selected: selectedItems.length,
+    completed: completedItems.length,
+    remaining: selectedItems.length - completedItems.length
+  };
 };
 
