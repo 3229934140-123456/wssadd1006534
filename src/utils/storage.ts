@@ -1,4 +1,4 @@
-import type { UserData, WrongAnswer, PracticeScore, RecordTrainingResult, Student, MissingCategory } from '@/types';
+import type { UserData, WrongAnswer, PracticeScore, RecordTrainingResult, Student, MissingCategory, StudentPracticeSuggestion } from '@/types';
 
 const STORAGE_KEY = 'dental-followup-training-data';
 
@@ -18,6 +18,7 @@ const defaultUserData: UserData = {
   practiceScores: [],
   wrongAnswers: [],
   recordTrainingResults: [],
+  practiceSuggestions: [],
   currentStudentId: 'stu-001',
   students: mockStudents
 };
@@ -58,11 +59,32 @@ export const setCurrentStudent = (studentId: string): void => {
   saveUserData(userData);
 };
 
-export const addWrongAnswer = (wrongAnswer: Omit<WrongAnswer, 'id' | 'timestamp' | 'studentId' | 'studentName'>): void => {
+export const detectMissingCategories = (missingPoints: string[]): MissingCategory[] => {
+  const categories: Set<MissingCategory> = new Set();
+  const missingStr = missingPoints.join('');
+  
+  if (missingStr.includes('刷牙') || missingStr.includes('巴氏')) categories.add('brushing');
+  if (missingStr.includes('牙线') || missingStr.includes('牙缝')) categories.add('floss');
+  if (missingStr.includes('敏感') || missingStr.includes('敏感期')) categories.add('sensitivity');
+  if (missingStr.includes('复诊') || missingStr.includes('复查')) categories.add('recheck');
+  if (missingStr.includes('饮食') || missingStr.includes('食物') || missingStr.includes('冷') || missingStr.includes('热')) categories.add('diet');
+  if (missingStr.includes('口腔卫生') || missingStr.includes('漱口') || missingStr.includes('刷牙习惯')) categories.add('hygiene');
+  if (missingStr.includes('症状') || missingStr.includes('出血') || missingStr.includes('疼痛')) categories.add('symptom');
+  if (missingStr.includes('情绪') || missingStr.includes('安抚') || missingStr.includes('理解') || missingStr.includes('担心')) categories.add('emotional');
+  
+  if (categories.size === 0) categories.add('other');
+  return Array.from(categories);
+};
+
+export const addWrongAnswer = (wrongAnswer: Omit<WrongAnswer, 'id' | 'timestamp' | 'studentId' | 'studentName' | 'missingCategories' | 'missingPoints'> & { missingPoints: string[] }): void => {
   const userData = getUserData();
   const currentStudent = getCurrentStudent();
+  const missingCategories = detectMissingCategories(wrongAnswer.missingPoints);
+  
   const newWrongAnswer: WrongAnswer = {
     ...wrongAnswer,
+    missingCategories,
+    missingCategory: missingCategories[0] || 'other',
     id: 'wrong-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
     timestamp: Date.now(),
     studentId: currentStudent.id,
@@ -99,15 +121,22 @@ export const addRecordTrainingResult = (result: Omit<RecordTrainingResult, 'id' 
   saveUserData(userData);
 };
 
-export const getLastRecordTrainingResult = (caseId: string): RecordTrainingResult | null => {
+export const getLastRecordTrainingResult = (caseId: string, studentId?: string): RecordTrainingResult | null => {
   const userData = getUserData();
-  const results = userData.recordTrainingResults.filter(r => r.caseId === caseId);
+  let results = userData.recordTrainingResults.filter(r => r.caseId === caseId);
+  if (studentId) {
+    results = results.filter(r => r.studentId === studentId);
+  }
   return results.length > 0 ? results[0] : null;
 };
 
-export const getRecordTrainingResultsByCase = (caseId: string): RecordTrainingResult[] => {
+export const getRecordTrainingResultsByCase = (caseId: string, studentId?: string): RecordTrainingResult[] => {
   const userData = getUserData();
-  return userData.recordTrainingResults.filter(r => r.caseId === caseId);
+  let results = userData.recordTrainingResults.filter(r => r.caseId === caseId);
+  if (studentId) {
+    results = results.filter(r => r.studentId === studentId);
+  }
+  return results;
 };
 
 export const clearUserData = (): void => {
@@ -224,5 +253,38 @@ export const getTeachingPointsByCategory = (category: MissingCategory): string[]
     ]
   };
   return teachingPointsMap[category] || teachingPointsMap.other;
+};
+
+export const addPracticeSuggestion = (suggestion: Omit<StudentPracticeSuggestion, 'id' | 'createdAt' | 'completed'>): StudentPracticeSuggestion => {
+  const userData = getUserData();
+  const newSuggestion: StudentPracticeSuggestion = {
+    ...suggestion,
+    id: 'sug-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+    createdAt: Date.now(),
+    completed: false
+  };
+  userData.practiceSuggestions.push(newSuggestion);
+  saveUserData(userData);
+  return newSuggestion;
+};
+
+export const getPracticeSuggestionsByStudent = (studentId: string): StudentPracticeSuggestion[] => {
+  const userData = getUserData();
+  return userData.practiceSuggestions.filter(s => s.studentId === studentId).sort((a, b) => b.createdAt - a.createdAt);
+};
+
+export const toggleSuggestionCompleted = (suggestionId: string): void => {
+  const userData = getUserData();
+  const suggestion = userData.practiceSuggestions.find(s => s.id === suggestionId);
+  if (suggestion) {
+    suggestion.completed = !suggestion.completed;
+    saveUserData(userData);
+  }
+};
+
+export const deletePracticeSuggestion = (suggestionId: string): void => {
+  const userData = getUserData();
+  userData.practiceSuggestions = userData.practiceSuggestions.filter(s => s.id !== suggestionId);
+  saveUserData(userData);
 };
 

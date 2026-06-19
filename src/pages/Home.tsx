@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
-import { Star, MessageCircle, FileText, AlertTriangle, Trophy, CheckCircle2, Target, BookOpen } from 'lucide-react';
-import { Card, CardContent, CardFooter } from '@/components/ui/Card';
+import { useNavigate, Link } from 'react-router-dom';
+import { Star, MessageCircle, FileText, AlertTriangle, Trophy, CheckCircle2, Target, BookOpen, Users, TrendingUp, TrendingDown, Calendar, ArrowUpRight, ArrowDownRight, ClipboardList, UserCheck } from 'lucide-react';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { cases } from '@/data/cases';
 import { useAppStore } from '@/store/appStore';
 import { getBestScoreForCase, isCaseCompleted, getPracticeCountByCase, getRecordCountByCase } from '@/utils/storage';
-import { calculateReviewStats } from '@/utils/statistics';
+import { calculateReviewStats, generateTeacherWorkbenchData, getCategoryName } from '@/utils/statistics';
+import type { MissingCategory } from '@/types';
 
 const difficultyColors = {
   1: 'from-green-400 to-green-500',
@@ -20,6 +21,30 @@ const difficultyLabels = {
   1: '入门',
   2: '进阶',
   3: '挑战'
+};
+
+const categoryColors: Record<MissingCategory, { bg: string; text: string; bar: string; ring: string }> = {
+  brushing: { bg: 'bg-blue-50', text: 'text-blue-700', bar: 'bg-blue-500', ring: 'ring-blue-400' },
+  floss: { bg: 'bg-green-50', text: 'text-green-700', bar: 'bg-green-500', ring: 'ring-green-400' },
+  sensitivity: { bg: 'bg-purple-50', text: 'text-purple-700', bar: 'bg-purple-500', ring: 'ring-purple-400' },
+  recheck: { bg: 'bg-orange-50', text: 'text-orange-700', bar: 'bg-orange-500', ring: 'ring-orange-400' },
+  diet: { bg: 'bg-pink-50', text: 'text-pink-700', bar: 'bg-pink-500', ring: 'ring-pink-400' },
+  hygiene: { bg: 'bg-cyan-50', text: 'text-cyan-700', bar: 'bg-cyan-500', ring: 'ring-cyan-400' },
+  symptom: { bg: 'bg-red-50', text: 'text-red-700', bar: 'bg-red-500', ring: 'ring-red-400' },
+  emotional: { bg: 'bg-yellow-50', text: 'text-yellow-700', bar: 'bg-yellow-500', ring: 'ring-yellow-400' },
+  other: { bg: 'bg-gray-50', text: 'text-gray-700', bar: 'bg-gray-500', ring: 'ring-gray-400' }
+};
+
+const categoryBadgeColors: Record<MissingCategory, string> = {
+  brushing: 'bg-blue-100 text-blue-700',
+  floss: 'bg-green-100 text-green-700',
+  sensitivity: 'bg-purple-100 text-purple-700',
+  recheck: 'bg-orange-100 text-orange-700',
+  diet: 'bg-pink-100 text-pink-700',
+  hygiene: 'bg-cyan-100 text-cyan-700',
+  symptom: 'bg-red-100 text-red-700',
+  emotional: 'bg-yellow-100 text-yellow-700',
+  other: 'bg-gray-100 text-gray-700'
 };
 
 export default function HomePage() {
@@ -41,6 +66,24 @@ export default function HomePage() {
   const accuracyRate = stats.accuracyRate;
   const totalRecordTrainings = stats.totalRecordTrainings;
   const avgRecordScore = stats.averageRecordScore;
+  
+  const isTeacher = userData.role === 'teacher';
+  const workbenchData = isTeacher ? generateTeacherWorkbenchData(
+    userData.students || [],
+    userData.wrongAnswers || [],
+    userData.practiceScores || [],
+    userData.recordTrainingResults || []
+  ) : null;
+  
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'long'
+    });
+  };
   
   const handleStartPractice = (caseId: string) => {
     navigate(`/practice/${caseId}`);
@@ -171,6 +214,263 @@ export default function HomePage() {
             </CardContent>
           </Card>
         </motion.div>
+        
+        {isTeacher && workbenchData && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="mb-12"
+          >
+            <Card className="bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-200 shadow-sm">
+              <CardHeader className="pb-4 border-b border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                      <ClipboardList className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">老师工作台</h2>
+                      <p className="text-sm text-gray-500">Teacher Workbench</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Calendar className="w-4 h-4" />
+                    <span>{formatDate(workbenchData.date)}</span>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-orange-500" />
+                  <h3 className="text-lg font-bold text-gray-800">今日讲评重点</h3>
+                </div>
+              </CardHeader>
+              
+              <CardContent className="pt-6 space-y-8">
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <AlertTriangle className="w-5 h-5 text-red-500" />
+                    <h4 className="text-base font-bold text-gray-800">今日高频问题</h4>
+                    <Badge variant="danger" size="sm">
+                      {workbenchData.highFrequencyProblems.length} 项
+                    </Badge>
+                  </div>
+                  
+                  {workbenchData.highFrequencyProblems.length === 0 ? (
+                    <div className="text-center py-6 text-gray-500 bg-white rounded-xl border border-dashed border-gray-200">
+                      <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                      <p>暂无高频问题，学员整体表现良好</p>
+                    </div>
+                  ) : (
+                    <Link to="/review">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {workbenchData.highFrequencyProblems.map((problem, index) => {
+                          const colors = categoryColors[problem.category];
+                          const maxCount = Math.max(...workbenchData.highFrequencyProblems.map(p => p.count), 1);
+                          const progressWidth = (problem.count / maxCount) * 100;
+                          
+                          return (
+                            <motion.div
+                              key={problem.category}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.2 + index * 0.05 }}
+                              className="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer"
+                            >
+                              <div className="flex items-start gap-3 mb-3">
+                                <div className={`w-10 h-10 ${colors.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                                  <span className="text-lg font-bold text-gray-700">#{index + 1}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h5 className="font-bold text-gray-800 truncate">{problem.categoryName}</h5>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge className={categoryBadgeColors[problem.category]} size="sm">
+                                      {problem.count} 次错误
+                                    </Badge>
+                                    <span className="text-xs text-gray-500">占比 {problem.percentage}%</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${colors.bar} rounded-full transition-all`}
+                                  style={{ width: `${progressWidth}%` }}
+                                />
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    </Link>
+                  )}
+                </div>
+                
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <UserCheck className="w-5 h-5 text-orange-500" />
+                    <h4 className="text-base font-bold text-gray-800">需要重点关注的学员</h4>
+                    <Badge variant="warning" size="sm">
+                      {workbenchData.focusStudents.length} 人
+                    </Badge>
+                  </div>
+                  
+                  {workbenchData.focusStudents.length === 0 ? (
+                    <div className="text-center py-6 text-gray-500 bg-white rounded-xl border border-dashed border-gray-200">
+                      <Users className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                      <p>暂无需要重点关注的学员</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {workbenchData.focusStudents.map((focus, index) => {
+                        const isLowScore = focus.recentScore < 60;
+                        const isMediumScore = focus.recentScore >= 60 && focus.recentScore < 80;
+                        const cardBgClass = isLowScore 
+                          ? 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200' 
+                          : isMediumScore 
+                            ? 'bg-gradient-to-br from-orange-50 to-yellow-50 border-orange-200' 
+                            : 'bg-white border-gray-200';
+                        
+                        return (
+                          <Link 
+                            key={focus.student.id}
+                            to={`/teacher?studentId=${focus.student.id}`}
+                          >
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.35 + index * 0.05 }}
+                              className={`rounded-xl p-4 border ${cardBgClass} hover:shadow-md transition-all cursor-pointer`}
+                            >
+                              <div className="flex items-center gap-3 mb-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
+                                  isLowScore 
+                                    ? 'bg-red-100 text-red-600' 
+                                    : isMediumScore 
+                                      ? 'bg-orange-100 text-orange-600' 
+                                      : 'bg-blue-100 text-blue-600'
+                                }`}>
+                                  {focus.student.name.slice(0, 1)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h5 className="font-bold text-gray-800 truncate">{focus.student.name}</h5>
+                                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    <span>错误 {focus.wrongCount} 次</span>
+                                  </div>
+                                </div>
+                                <div className={`text-right ${
+                                  isLowScore 
+                                    ? 'text-red-600' 
+                                    : isMediumScore 
+                                      ? 'text-orange-600' 
+                                      : 'text-green-600'
+                                }`}>
+                                  <p className="text-xl font-bold">{focus.recentScore || '-'}</p>
+                                  <p className="text-xs opacity-70">平均分</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">最薄弱：</span>
+                                <Badge className={categoryBadgeColors[focus.weakestCategory]} size="sm">
+                                  {getCategoryName(focus.weakestCategory)}
+                                </Badge>
+                              </div>
+                            </motion.div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <FileText className="w-5 h-5 text-blue-500" />
+                    <h4 className="text-base font-bold text-gray-800">最近记录训练表现</h4>
+                    <Badge variant="info" size="sm">
+                      {workbenchData.recentRecordPerformance.length} 条
+                    </Badge>
+                  </div>
+                  
+                  {workbenchData.recentRecordPerformance.length === 0 || 
+                   workbenchData.recentRecordPerformance.every(r => !r.lastRecord) ? (
+                    <div className="text-center py-6 text-gray-500 bg-white rounded-xl border border-dashed border-gray-200">
+                      <ClipboardList className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+                      <p>暂无记录训练数据</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {workbenchData.recentRecordPerformance
+                        .filter(r => r.lastRecord)
+                        .map((record, index) => (
+                          <Link 
+                            key={record.student.id}
+                            to={`/record/${record.lastRecord!.caseId}`}
+                          >
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.5 + index * 0.05 }}
+                              className="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer"
+                            >
+                              <div className="flex items-center gap-3 mb-3">
+                                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center font-medium text-purple-600">
+                                  {record.student.name.slice(0, 1)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h5 className="font-bold text-gray-800 truncate">{record.student.name}</h5>
+                                  <p className="text-xs text-gray-500 truncate">
+                                    {record.lastRecord!.caseTitle}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xl font-bold text-gray-800">
+                                    {record.lastRecord!.totalScore}
+                                  </p>
+                                  <p className="text-xs text-gray-500">上次得分</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className={`flex items-center gap-1 text-sm font-medium ${
+                                  record.improvement > 0 
+                                    ? 'text-green-600' 
+                                    : record.improvement < 0 
+                                      ? 'text-red-600' 
+                                      : 'text-gray-500'
+                                }`}>
+                                  {record.improvement > 0 ? (
+                                    <ArrowUpRight className="w-4 h-4" />
+                                  ) : record.improvement < 0 ? (
+                                    <ArrowDownRight className="w-4 h-4" />
+                                  ) : null}
+                                  <span>
+                                    {record.improvement > 0 ? `+${record.improvement}` : record.improvement}
+                                  </span>
+                                  <span className="text-xs text-gray-400 ml-1">较前3次</span>
+                                </div>
+                                {record.improvement > 0 && (
+                                  <Badge variant="success" size="sm">
+                                    <TrendingUp className="w-3 h-3 mr-1" />
+                                    进步
+                                  </Badge>
+                                )}
+                                {record.improvement < 0 && (
+                                  <Badge variant="danger" size="sm">
+                                    <TrendingDown className="w-3 h-3 mr-1" />
+                                    退步
+                                  </Badge>
+                                )}
+                              </div>
+                            </motion.div>
+                          </Link>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
         
         <motion.div
           initial={{ opacity: 0 }}

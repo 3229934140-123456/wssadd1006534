@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/store/appStore';
 import { getCaseById } from '@/data/cases';
-import { getCategoryReviews } from '@/utils/statistics';
+import { getCategoryReviews, getCategoryName } from '@/utils/statistics';
 import type { MissingCategory, CategoryReview, WrongAnswer } from '@/types';
 
 const categoryColors: Record<MissingCategory, { bg: string; text: string; bar: string; ring: string }> = {
@@ -260,6 +260,19 @@ export default function ReviewPage() {
               const maxCount = getMaxCount();
               const progressWidth = (review.count / maxCount) * 100;
               
+              const otherCategorySet = new Set<MissingCategory>();
+              review.wrongAnswers.forEach(wa => {
+                const categories = wa.missingCategories && wa.missingCategories.length > 0 
+                  ? wa.missingCategories 
+                  : [wa.missingCategory];
+                categories.forEach(cat => {
+                  if (cat !== review.category) {
+                    otherCategorySet.add(cat);
+                  }
+                });
+              });
+              const otherCategories = Array.from(otherCategorySet);
+              
               return (
                 <motion.div
                   key={review.category}
@@ -280,12 +293,26 @@ export default function ReviewPage() {
                             <span className="text-xl font-bold">{index + 1}</span>
                           </div>
                           <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
+                            <div className="flex items-center gap-3 mb-2 flex-wrap">
                               <h4 className="font-bold text-gray-800 text-lg">{review.categoryName}</h4>
                               <Badge className={categoryBadgeColors[review.category]} size="sm">
                                 {review.count} 次错误
                               </Badge>
                               <span className="text-sm font-medium text-gray-600">占比 {review.percentage}%</span>
+                              {otherCategories.length > 0 && (
+                                <div className="flex items-center gap-1.5 ml-1">
+                                  <span className="text-xs text-gray-400">同时涉及：</span>
+                                  {otherCategories.map(cat => (
+                                    <Badge
+                                      key={cat}
+                                      className={categoryBadgeColors[cat]}
+                                      size="sm"
+                                    >
+                                      {getCategoryName(cat)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                             <div className="w-full max-w-md h-3 bg-gray-100 rounded-full overflow-hidden">
                               <motion.div
@@ -347,6 +374,10 @@ export default function ReviewPage() {
                                 <div className="space-y-3">
                                   {review.wrongAnswers.map((wrong: WrongAnswer, wrongIndex: number) => {
                                     const caseData = getCaseById(wrong.caseId);
+                                    const allCategories = wrong.missingCategories && wrong.missingCategories.length > 0 
+                                      ? wrong.missingCategories 
+                                      : [wrong.missingCategory];
+                                    const otherCategories = allCategories.filter(c => c !== review.category);
                                     return (
                                       <motion.div
                                         key={wrong.id}
@@ -368,9 +399,9 @@ export default function ReviewPage() {
                                               <div className="flex items-center gap-2 mt-0.5">
                                                 <Calendar className="w-3 h-3 text-gray-400" />
                                                 <span className="text-xs text-gray-500">{formatDate(wrong.timestamp)}</span>
-                                                {wrong.studentName && (
-                                                  <span className="text-xs text-gray-500">· {wrong.studentName}</span>
-                                                )}
+                                                <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                                                  {wrong.studentName || '未知学员'}
+                                                </span>
                                               </div>
                                             </div>
                                           </div>
@@ -385,8 +416,22 @@ export default function ReviewPage() {
                                             重新练习
                                           </Button>
                                         </div>
+
+                                        <div className="mb-3">
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {allCategories.map((cat) => (
+                                              <Badge
+                                                key={cat}
+                                                className={categoryBadgeColors[cat]}
+                                                size="sm"
+                                              >
+                                                {getCategoryName(cat)}
+                                              </Badge>
+                                            ))}
+                                          </div>
+                                        </div>
                                         
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                                           <div className="bg-red-50 rounded-lg p-3">
                                             <p className="text-xs font-medium text-red-700 mb-1.5 flex items-center gap-1">
                                               <XCircle className="w-3 h-3" />
@@ -402,6 +447,23 @@ export default function ReviewPage() {
                                             <p className="text-sm text-gray-700 leading-relaxed">{wrong.correctOption}</p>
                                           </div>
                                         </div>
+
+                                        {wrong.missingPoints && wrong.missingPoints.length > 0 && (
+                                          <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-100">
+                                            <p className="text-xs font-medium text-yellow-700 mb-2 flex items-center gap-1">
+                                              <Lightbulb className="w-3 h-3" />
+                                              漏讲要点（{wrong.missingPoints.length} 条）
+                                            </p>
+                                            <ul className="space-y-1">
+                                              {wrong.missingPoints.map((point, idx) => (
+                                                <li key={idx} className="text-xs text-gray-700 flex items-start gap-1.5">
+                                                  <span className="text-yellow-500 mt-0.5">•</span>
+                                                  <span>{point}</span>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
                                       </motion.div>
                                     );
                                   })}

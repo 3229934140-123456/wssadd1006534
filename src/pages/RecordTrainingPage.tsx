@@ -32,6 +32,8 @@ export default function RecordTrainingPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
   const saveRecordResult = useAppStore(state => state.saveRecordResult);
+  const userData = useAppStore(state => state.userData);
+  const currentStudent = userData.students.find(s => s.id === userData.currentStudentId);
   
   const [currentAnswerIndex, setCurrentAnswerIndex] = useState(0);
   const [userRecord, setUserRecord] = useState('');
@@ -54,12 +56,12 @@ export default function RecordTrainingPage() {
     setShowLastRecord(false);
     setShowLastReference(false);
     if (caseId) {
-      const saved = getLastRecordTrainingResult(caseId);
+      const saved = getLastRecordTrainingResult(caseId, currentStudent?.id);
       setLastRecord(saved);
     } else {
       setLastRecord(null);
     }
-  }, [caseId]);
+  }, [caseId, currentStudent?.id]);
   
   if (!caseData || !recordTemplate) {
     return (
@@ -124,7 +126,7 @@ export default function RecordTrainingPage() {
       missingSections: result.missingSections
     });
     
-    const updatedLastRecord = getLastRecordTrainingResult(caseId!);
+    const updatedLastRecord = getLastRecordTrainingResult(caseId!, currentStudent?.id);
     setLastRecord(updatedLastRecord);
     setScoreResult(result);
     setIsSubmitted(true);

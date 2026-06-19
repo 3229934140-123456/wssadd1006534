@@ -138,6 +138,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         selectedContent: option.content,
         correctContent: correctOption.content,
         missingCategory,
+        missingPoints: option.feedback.missingPoints || [],
         score: option.score,
         feedback: option.feedback.explanation,
         selectedOption: option.content,

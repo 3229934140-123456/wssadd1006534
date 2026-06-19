@@ -98,6 +98,8 @@ export interface WrongAnswer {
   selectedContent: string;
   correctContent: string;
   missingCategory: MissingCategory;
+  missingCategories: MissingCategory[];
+  missingPoints: string[];
   score: number;
   feedback: string;
   selectedOption: string;
@@ -136,6 +138,7 @@ export interface UserData {
   practiceScores: PracticeScore[];
   wrongAnswers: WrongAnswer[];
   recordTrainingResults: RecordTrainingResult[];
+  practiceSuggestions: StudentPracticeSuggestion[];
   currentStudentId: string;
   students: Student[];
 }
@@ -170,6 +173,80 @@ export interface CategoryReview {
   percentage: number;
   wrongAnswers: WrongAnswer[];
   teachingPoints: string[];
+}
+
+export interface ReviewPackageItem {
+  category: MissingCategory;
+  categoryName: string;
+  count: number;
+  percentage: number;
+  relatedCases: { caseId: string; caseTitle: string; count: number }[];
+  relatedStudents: { studentId: string; studentName: string; count: number }[];
+  teachingPoints: string[];
+  suggestedSpeech: string;
+  wrongAnswerExamples: WrongAnswer[];
+}
+
+export interface MorningReviewPackage {
+  date: string;
+  commonProblems: ReviewPackageItem[];
+  individualFocus: {
+    student: Student;
+    weakestCategories: CategoryReview[];
+    practiceSuggestions: string[];
+  }[];
+  totalWrongCount: number;
+  studentCount: number;
+}
+
+export interface StudentPracticeSuggestion {
+  id: string;
+  studentId: string;
+  content: string;
+  type: 'dialogue' | 'record' | 'review';
+  caseIds: string[];
+  createdBy: string;
+  createdAt: number;
+  completed: boolean;
+}
+
+export interface StudentGrowthTrend {
+  dates: string[];
+  dialogueScores: number[];
+  recordScores: number[];
+  correctRates: number[];
+}
+
+export interface StudentGrowthProfile {
+  student: Student;
+  overallTrend: StudentGrowthTrend;
+  recentPractices: PracticeScore[];
+  recentRecords: RecordTrainingResult[];
+  frequentWrongCategories: CategoryReview[];
+  frequentMissingSections: { section: RecordSection; sectionName: string; count: number }[];
+  practiceSuggestions: StudentPracticeSuggestion[];
+  totalDialoguePractices: number;
+  totalRecordPractices: number;
+  averageDialogueScore: number;
+  averageRecordScore: number;
+  improvement: number;
+}
+
+export interface TeacherWorkbenchData {
+  date: string;
+  highFrequencyProblems: CategoryReview[];
+  focusStudents: {
+    student: Student;
+    wrongCount: number;
+    weakestCategory: MissingCategory;
+    recentScore: number;
+  }[];
+  recentRecordPerformance: {
+    student: Student;
+    lastRecord: RecordTrainingResult | null;
+    improvement: number;
+  }[];
+  todayMorningReview: MorningReviewPackage;
 }
 
 export interface StepResult {

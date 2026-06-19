@@ -1,5 +1,5 @@
-import type { WrongAnswer, PracticeScore, MissingCategory, ReviewStats, CategoryReview, RecordTrainingResult, RecordSection, Student } from '@/types';
-import { getTeachingPointsByCategory } from './storage';
+import type { WrongAnswer, PracticeScore, MissingCategory, ReviewStats, CategoryReview, RecordTrainingResult, RecordSection, Student, MorningReviewPackage, ReviewPackageItem, StudentGrowthProfile, StudentGrowthTrend, TeacherWorkbenchData } from '@/types';
+import { getTeachingPointsByCategory, getPracticeSuggestionsByStudent } from './storage';
 
 const CATEGORY_NAMES: Record<MissingCategory, string> = {
   brushing: '刷牙方式',
@@ -48,9 +48,12 @@ export const calculateReviewStats = (
   };
   
   wrongAnswers.forEach(wa => {
-    if (wrongByCategory[wa.missingCategory] !== undefined) {
-      wrongByCategory[wa.missingCategory]++;
-    }
+    const categories = wa.missingCategories && wa.missingCategories.length > 0 ? wa.missingCategories : [wa.missingCategory];
+    categories.forEach(cat => {
+      if (wrongByCategory[cat] !== undefined) {
+        wrongByCategory[cat]++;
+      }
+    });
   });
   
   const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -104,21 +107,25 @@ export const calculateReviewStats = (
 };
 
 export const getCategoryReviews = (wrongAnswers: WrongAnswer[]): CategoryReview[] => {
-  const totalWrong = wrongAnswers.length;
   const categoryMap = new Map<MissingCategory, WrongAnswer[]>();
   
   wrongAnswers.forEach(wa => {
-    const existing = categoryMap.get(wa.missingCategory) || [];
-    existing.push(wa);
-    categoryMap.set(wa.missingCategory, existing);
+    const categories = wa.missingCategories && wa.missingCategories.length > 0 ? wa.missingCategories : [wa.missingCategory];
+    categories.forEach(cat => {
+      const existing = categoryMap.get(cat) || [];
+      existing.push(wa);
+      categoryMap.set(cat, existing);
+    });
   });
+  
+  const totalCounts = Array.from(categoryMap.values()).reduce((sum, arr) => sum + arr.length, 0);
   
   return Array.from(categoryMap.entries())
     .map(([category, answers]) => ({
       category,
       categoryName: getCategoryName(category),
       count: answers.length,
-      percentage: totalWrong > 0 ? Math.round((answers.length / totalWrong) * 100) : 0,
+      percentage: totalCounts > 0 ? Math.round((answers.length / totalCounts) * 100) : 0,
       wrongAnswers: answers.sort((a, b) => b.timestamp - a.timestamp),
       teachingPoints: getTeachingPointsByCategory(category)
     }))
@@ -132,9 +139,12 @@ export const getRadarChartData = (wrongAnswers: WrongAnswer[]) => {
   };
   
   wrongAnswers.forEach(wa => {
-    if (wrongByCategory[wa.missingCategory] !== undefined) {
-      wrongByCategory[wa.missingCategory]++;
-    }
+    const categories = wa.missingCategories && wa.missingCategories.length > 0 ? wa.missingCategories : [wa.missingCategory];
+    categories.forEach(cat => {
+      if (wrongByCategory[cat] !== undefined) {
+        wrongByCategory[cat]++;
+      }
+    });
   });
   
   const maxValue = Math.max(...Object.values(wrongByCategory), 1);
@@ -264,6 +274,250 @@ export const getClassOverallStats = (
     frequentMissingSections,
     totalStudents: students.length,
     activeStudents: students.filter(s => s.isActive).length
+  };
+};
+
+const getSuggestedSpeech = (category: MissingCategory, count: number, percentage: number): string => {
+  const categoryName = getCategoryName(category);
+  const teachingPoints = getTeachingPointsByCategory(category);
+  
+  if (percentage >= 40) {
+    return `各位同学，今天我们重点讲一下"${categoryName}"这个环节。全班共有${count}人次在这个地方出错，占比${percentage}%，属于需要大家重点掌握的共性问题。首先，${teachingPoints[0]}。其次，${teachingPoints[1]}。大家在后续练习中一定要注意这几点，别再犯同样的错误了。`;
+  } else if (percentage >= 20) {
+    return `"${categoryName}"方面有${count}人次出错，占比${percentage}%，需要加强练习。核心要点：${teachingPoints.slice(0, 2).join('；')}。`;
+  }
+  return `"${categoryName}"出错${count}次（${percentage}%），重点：${teachingPoints[0]}。`;
+};
+
+export const generateMorningReviewPackage = (
+  students: Student[],
+  wrongAnswers: WrongAnswer[],
+  practiceScores: PracticeScore[],
+  recordResults: RecordTrainingResult[]
+): MorningReviewPackage => {
+  const categoryReviews = getCategoryReviews(wrongAnswers);
+  const activeStudents = students.filter(s => s.isActive);
+  
+  const commonProblems: ReviewPackageItem[] = categoryReviews
+    .filter(cr => cr.count > 0)
+    .map(cr => {
+      const relatedCasesMap = new Map<string, { caseId: string; caseTitle: string; count: number }>();
+      const relatedStudentsMap = new Map<string, { studentId: string; studentName: string; count: number }>();
+      
+      cr.wrongAnswers.forEach(wa => {
+        const caseKey = wa.caseId;
+        const existingCase = relatedCasesMap.get(caseKey);
+        if (existingCase) {
+          existingCase.count++;
+        } else {
+          relatedCasesMap.set(caseKey, { caseId: wa.caseId, caseTitle: wa.caseTitle, count: 1 });
+        }
+        
+        const studentKey = wa.studentId;
+        const existingStudent = relatedStudentsMap.get(studentKey);
+        if (existingStudent) {
+          existingStudent.count++;
+        } else {
+          relatedStudentsMap.set(studentKey, { studentId: wa.studentId, studentName: wa.studentName, count: 1 });
+        }
+      });
+      
+      return {
+        category: cr.category,
+        categoryName: cr.categoryName,
+        count: cr.count,
+        percentage: cr.percentage,
+        relatedCases: Array.from(relatedCasesMap.values()).sort((a, b) => b.count - a.count).slice(0, 5),
+        relatedStudents: Array.from(relatedStudentsMap.values()).sort((a, b) => b.count - a.count).slice(0, 5),
+        teachingPoints: cr.teachingPoints,
+        suggestedSpeech: getSuggestedSpeech(cr.category, cr.count, cr.percentage),
+        wrongAnswerExamples: cr.wrongAnswers.slice(0, 3)
+      };
+    });
+  
+  const individualFocus = activeStudents.map(student => {
+    const stats = getStudentStats(student.id, wrongAnswers, practiceScores, recordResults);
+    const weakestCategories = stats.categoryReviews.slice(0, 3);
+    const suggestions: string[] = [];
+    
+    if (weakestCategories.length > 0) {
+      suggestions.push(`重点加强"${weakestCategories[0].categoryName}"的话术练习`);
+    }
+    if (stats.averageRecordScore < 70 && stats.recordCount > 0) {
+      suggestions.push('随访记录写作需要多加练习，注意结构完整性');
+    }
+    if (stats.practiceCount < 3) {
+      suggestions.push('整体练习量不足，建议本周完成至少3个病例的完整练习');
+    }
+    if (weakestCategories.length > 1) {
+      suggestions.push(`其次关注"${weakestCategories[1].categoryName}"环节`);
+    }
+    if (suggestions.length === 0) {
+      suggestions.push('整体表现良好，继续保持并挑战更高难度');
+    }
+    
+    return {
+      student,
+      weakestCategories,
+      practiceSuggestions: suggestions
+    };
+  }).sort((a, b) => b.weakestCategories.length - a.weakestCategories.length);
+  
+  return {
+    date: new Date().toISOString().split('T')[0],
+    commonProblems,
+    individualFocus,
+    totalWrongCount: wrongAnswers.length,
+    studentCount: activeStudents.length
+  };
+};
+
+export const generateStudentGrowthProfile = (
+  student: Student,
+  wrongAnswers: WrongAnswer[],
+  practiceScores: PracticeScore[],
+  recordResults: RecordTrainingResult[]
+): StudentGrowthProfile => {
+  const studentWrongAnswers = wrongAnswers.filter(w => w.studentId === student.id);
+  const studentScores = practiceScores.filter(s => s.studentId === student.id).sort((a, b) => a.timestamp - b.timestamp);
+  const studentRecords = recordResults.filter(r => r.studentId === student.id).sort((a, b) => a.timestamp - b.timestamp);
+  const stats = getStudentStats(student.id, wrongAnswers, practiceScores, recordResults);
+  
+  const last10Days = Array.from({ length: 10 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (9 - i));
+    return date.toISOString().split('T')[0].slice(5);
+  });
+  
+  const trend: StudentGrowthTrend = {
+    dates: last10Days,
+    dialogueScores: last10Days.map(date => {
+      const dayScores = studentScores.filter(s => new Date(s.timestamp).toISOString().split('T')[0].slice(5) === date);
+      return dayScores.length > 0 ? Math.round(dayScores.reduce((sum, s) => sum + s.totalScore, 0) / dayScores.length) : 0;
+    }),
+    recordScores: last10Days.map(date => {
+      const dayRecords = studentRecords.filter(r => new Date(r.timestamp).toISOString().split('T')[0].slice(5) === date);
+      return dayRecords.length > 0 ? Math.round(dayRecords.reduce((sum, r) => sum + r.totalScore, 0) / dayRecords.length) : 0;
+    }),
+    correctRates: last10Days.map(date => {
+      const dayScores = studentScores.filter(s => new Date(s.timestamp).toISOString().split('T')[0].slice(5) === date);
+      return dayScores.length > 0 ? Math.round(dayScores.reduce((sum, s) => sum + s.correctRate, 0) / dayScores.length) : 0;
+    })
+  };
+  
+  const sectionMissingCounts: Record<RecordSection, number> = {
+    basic_info: 0, chief_complaint: 0, present_illness: 0,
+    oral_exam: 0, guidance: 0, recheck_plan: 0
+  };
+  studentRecords.forEach(r => {
+    r.missingSections.forEach(section => {
+      if (sectionMissingCounts[section] !== undefined) {
+        sectionMissingCounts[section]++;
+      }
+    });
+  });
+  
+  const frequentMissingSections = (Object.entries(sectionMissingCounts) as [RecordSection, number][])
+    .filter(([, count]) => count > 0)
+    .map(([section, count]) => ({
+      section,
+      sectionName: getSectionName(section),
+      count
+    }))
+    .sort((a, b) => b.count - a.count);
+  
+  const recentScores = studentScores.slice(-5);
+  const earlierScores = studentScores.slice(0, -5);
+  const recentAvg = recentScores.length > 0 ? recentScores.reduce((sum, s) => sum + s.totalScore, 0) / recentScores.length : 0;
+  const earlierAvg = earlierScores.length > 0 ? earlierScores.reduce((sum, s) => sum + s.totalScore, 0) / earlierScores.length : 0;
+  const improvement = earlierAvg > 0 ? Math.round(recentAvg - earlierAvg) : 0;
+  
+  return {
+    student,
+    overallTrend: trend,
+    recentPractices: studentScores.slice(-10).reverse(),
+    recentRecords: studentRecords.slice(-10).reverse(),
+    frequentWrongCategories: stats.categoryReviews.slice(0, 5),
+    frequentMissingSections,
+    practiceSuggestions: getPracticeSuggestionsByStudent(student.id),
+    totalDialoguePractices: studentScores.length,
+    totalRecordPractices: studentRecords.length,
+    averageDialogueScore: stats.averageScore,
+    averageRecordScore: stats.averageRecordScore,
+    improvement
+  };
+};
+
+export const generateTeacherWorkbenchData = (
+  students: Student[],
+  wrongAnswers: WrongAnswer[],
+  practiceScores: PracticeScore[],
+  recordResults: RecordTrainingResult[]
+): TeacherWorkbenchData => {
+  const categoryReviews = getCategoryReviews(wrongAnswers);
+  const highFrequencyProblems = categoryReviews.filter(cr => cr.count >= 2).slice(0, 5);
+  
+  const activeStudents = students.filter(s => s.isActive);
+  const focusStudents = activeStudents.map(student => {
+    const stats = getStudentStats(student.id, wrongAnswers, practiceScores, recordResults);
+    const studentWrongAnswers = wrongAnswers.filter(w => w.studentId === student.id);
+    const categoryMap = new Map<MissingCategory, number>();
+    studentWrongAnswers.forEach(wa => {
+      const categories = wa.missingCategories && wa.missingCategories.length > 0 ? wa.missingCategories : [wa.missingCategory];
+      categories.forEach(cat => {
+        categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
+      });
+    });
+    let weakestCategory: MissingCategory = 'other';
+    let maxCount = 0;
+    categoryMap.forEach((count, cat) => {
+      if (count > maxCount) {
+        maxCount = count;
+        weakestCategory = cat;
+      }
+    });
+    
+    const studentScores = practiceScores.filter(s => s.studentId === student.id);
+    const recentScore = studentScores.length > 0 ? Math.round(studentScores.reduce((sum, s) => sum + s.totalScore, 0) / studentScores.length) : 0;
+    
+    return {
+      student,
+      wrongCount: studentWrongAnswers.length,
+      weakestCategory,
+      recentScore
+    };
+  }).sort((a, b) => b.wrongCount - a.wrongCount).slice(0, 6);
+  
+  const recentRecordPerformance = activeStudents.map(student => {
+    const studentRecords = recordResults.filter(r => r.studentId === student.id).sort((a, b) => b.timestamp - a.timestamp);
+    const lastRecord = studentRecords[0] || null;
+    
+    const recentRecords = studentRecords.slice(0, 3);
+    const earlierRecords = studentRecords.slice(3, 6);
+    const recentAvg = recentRecords.length > 0 ? recentRecords.reduce((sum, r) => sum + r.totalScore, 0) / recentRecords.length : 0;
+    const earlierAvg = earlierRecords.length > 0 ? earlierRecords.reduce((sum, r) => sum + r.totalScore, 0) / earlierRecords.length : 0;
+    const improvement = earlierAvg > 0 ? Math.round(recentAvg - earlierAvg) : 0;
+    
+    return {
+      student,
+      lastRecord,
+      improvement
+    };
+  }).sort((a, b) => {
+    if (!a.lastRecord && !b.lastRecord) return 0;
+    if (!a.lastRecord) return 1;
+    if (!b.lastRecord) return -1;
+    return a.improvement - b.improvement;
+  }).slice(0, 6);
+  
+  const todayMorningReview = generateMorningReviewPackage(students, wrongAnswers, practiceScores, recordResults);
+  
+  return {
+    date: new Date().toISOString().split('T')[0],
+    highFrequencyProblems,
+    focusStudents,
+    recentRecordPerformance,
+    todayMorningReview
   };
 };
 
