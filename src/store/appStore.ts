@@ -47,7 +47,7 @@ interface AppState {
   resetPractice: () => void;
   clearUserData: () => void;
   clearWrongAnswers: () => void;
-  saveRecordResult: (result: Omit<RecordTrainingResult, 'id' | 'timestamp' | 'studentId' | 'studentName'>) => void;
+  saveRecordResult: (result: Omit<RecordTrainingResult, 'id' | 'timestamp' | 'studentId' | 'studentName'>, targetStudentId?: string) => RecordTrainingResult | null;
   switchStudent: (studentId: string) => void;
   setCurrentStudentLocal: (student: Student) => void;
   setSelectedStudentId: (id: string | null) => void;
@@ -273,9 +273,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ userData: getUserData() });
   },
   
-  saveRecordResult: (result) => {
-    addRecordTrainingResult(result);
+  saveRecordResult: (result, targetStudentId) => {
+    const savedResult = addRecordTrainingResult(result, targetStudentId);
     set({ userData: getUserData() });
+    return savedResult;
   },
   
   switchStudent: (studentId) => {

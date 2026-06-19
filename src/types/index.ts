@@ -286,8 +286,27 @@ export interface TeacherComment {
   updatedAt: number;
   followedUp: boolean;
   followedUpAt?: number;
+  followedUpByStudentId?: string;
+  followedUpPracticeScoreId?: string;
+  followedUpRecordResultId?: string;
+  followedUpScore?: number;
+  followedUpNote?: string;
+  resolvedActionItems?: string[];
   seenByStudent: boolean;
   seenAt?: number;
+}
+
+export interface CommentClosureTracking {
+  comment: TeacherComment;
+  beforeScore: number | null;
+  afterScore: number | null;
+  scoreChange: number;
+  completedActionItems: string[];
+  pendingActionItems: string[];
+  followUpPractice?: PracticeScore;
+  followUpRecord?: RecordTrainingResult;
+  isClosed: boolean;
+  closurePercentage: number;
 }
 
 export interface FilterState {

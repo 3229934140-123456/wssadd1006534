@@ -44,7 +44,8 @@ import {
   generateStudentGrowthProfile,
   filterWrongAnswers,
   filterRecordResults,
-  getFilterOptions
+  getFilterOptions,
+  generateCommentClosureTracking
 } from '@/utils/statistics';
 import {
   addPracticeSuggestion,
@@ -57,7 +58,7 @@ import {
   markCommentAsFollowedUp,
   deleteTeacherComment
 } from '@/utils/storage';
-import type { MissingCategory, StudentPracticeSuggestion, MorningReviewChecklist, MorningReviewChecklistItem, TeacherComment, FilterState, PracticeScore, RecordTrainingResult, WrongAnswer } from '@/types';
+import type { MissingCategory, StudentPracticeSuggestion, MorningReviewChecklist, MorningReviewChecklistItem, TeacherComment, FilterState, PracticeScore, RecordTrainingResult, WrongAnswer, CommentClosureTracking } from '@/types';
 
 import {
   RadarChart,
@@ -151,6 +152,7 @@ export default function TeacherDashboard() {
   const [newCommentActionItems, setNewCommentActionItems] = useState<string[]>(['']);
   const [commentCaseDropdownOpen, setCommentCaseDropdownOpen] = useState(false);
   const [commentPracticeDropdownOpen, setCommentPracticeDropdownOpen] = useState(false);
+  const [expandedCommentIds, setExpandedCommentIds] = useState<Set<string>>(new Set());
   
   const today = new Date().toISOString().split('T')[0];
   
@@ -359,6 +361,15 @@ export default function TeacherDashboard() {
       )
     : null;
   
+  const closureTrackings = useMemo(() => {
+    if (!currentStudent) return [];
+    return generateCommentClosureTracking(
+      teacherComments,
+      filteredPracticeScores.filter(s => s.studentId === currentStudent.id),
+      filteredRecordResults.filter(r => r.studentId === currentStudent.id)
+    );
+  }, [teacherComments, filteredPracticeScores, filteredRecordResults, currentStudent]);
+  
   const checklistStats = currentChecklist ? {
     total: currentChecklist.items.filter(i => i.selected).length,
     completed: currentChecklist.items.filter(i => i.selected && i.completed).length,
@@ -510,6 +521,30 @@ export default function TeacherDashboard() {
     if (window.confirm('确定要删除这条批注吗？')) {
       deleteTeacherComment(commentId);
       setRefreshKey(prev => prev + 1);
+    }
+  };
+  
+  const toggleCommentExpand = (commentId: string) => {
+    setExpandedCommentIds(prev => {
+      const next = new Set(prev);
+      if (next.has(commentId)) {
+        next.delete(commentId);
+      } else {
+        next.add(commentId);
+      }
+      return next;
+    });
+  };
+  
+  const handleQuickFollowUp = (caseId: string, type: 'dialogue' | 'record') => {
+    setNewCommentType(type);
+    setNewCommentCaseId(caseId);
+    setNewCommentPracticeId('');
+    setCommentCaseDropdownOpen(false);
+    setCommentPracticeDropdownOpen(false);
+    const cardEl = document.getElementById('teacher-comments-section');
+    if (cardEl) {
+      cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
   
@@ -1760,6 +1795,294 @@ export default function TeacherDashboard() {
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <Target className="w-5 h-5 text-emerald-600" />
+                        改练闭环追踪
+                      </h2>
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                          已闭环
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                          跟进中
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                          待开始
+                        </span>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {closureTrackings.length > 0 ? (
+                      <div className="space-y-4">
+                        {closureTrackings.map((tracking, idx) => {
+                          const { comment, beforeScore, afterScore, scoreChange, completedActionItems, pendingActionItems, followUpPractice, followUpRecord, isClosed, closurePercentage } = tracking;
+                          const hasFollowUp = comment.followedUp;
+                          const statusBadge = isClosed 
+                            ? { variant: 'success' as const, text: '已闭环' }
+                            : hasFollowUp 
+                              ? { variant: 'warning' as const, text: '跟进中' }
+                              : { variant: 'default' as const, text: '待开始' };
+                          
+                          return (
+                            <motion.div
+                              key={comment.id}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: idx * 0.05 }}
+                              className={`p-5 rounded-xl border transition-all ${
+                                isClosed 
+                                  ? 'bg-gradient-to-br from-green-50 to-white border-green-200' 
+                                  : hasFollowUp 
+                                    ? 'bg-gradient-to-br from-orange-50 to-white border-orange-200'
+                                    : 'bg-white border-gray-200 hover:border-emerald-200'
+                              }`}
+                            >
+                              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge 
+                                    variant={comment.type === 'dialogue' ? 'info' : 'primary'}
+                                    size="sm"
+                                  >
+                                    {comment.type === 'dialogue' ? '话术' : '记录'}
+                                  </Badge>
+                                  <Badge variant="default" size="sm">
+                                    {comment.caseTitle}
+                                  </Badge>
+                                  <Badge variant={statusBadge.variant} size="sm">
+                                    {statusBadge.text}
+                                  </Badge>
+                                  <span className="text-xs text-gray-400 flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {new Date(comment.createdAt).toLocaleString('zh-CN', { 
+                                      month: 'numeric', 
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 min-w-[200px]">
+                                  <span className="text-xs font-medium text-gray-600 whitespace-nowrap">闭环进度</span>
+                                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div 
+                                      className={`h-full rounded-full transition-all ${
+                                        isClosed ? 'bg-gradient-to-r from-green-400 to-green-600' : 
+                                        hasFollowUp ? 'bg-gradient-to-r from-orange-400 to-orange-600' : 'bg-gray-400'
+                                      }`}
+                                      style={{ width: `${closurePercentage}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-xs font-bold ${
+                                    isClosed ? 'text-green-600' : hasFollowUp ? 'text-orange-600' : 'text-gray-500'
+                                  }`}>
+                                    {closurePercentage}%
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              <div className="mb-4 p-4 bg-white rounded-lg border border-gray-100">
+                                <p className="text-sm font-medium text-gray-500 mb-2">📝 老师批注</p>
+                                <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                                  {comment.content}
+                                </p>
+                                {comment.actionItems && comment.actionItems.length > 0 && (
+                                  <div>
+                                    <p className="text-xs font-medium text-gray-500 mb-2">待办要点：</p>
+                                    <ul className="space-y-1.5">
+                                      {completedActionItems.map((item, i) => (
+                                        <li key={`done-${i}`} className="flex items-start gap-2 text-sm text-green-600">
+                                          <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                          <span className="line-through">{item}</span>
+                                        </li>
+                                      ))}
+                                      {pendingActionItems.map((item, i) => (
+                                        <li key={`pending-${i}`} className="flex items-start gap-2 text-sm text-gray-600">
+                                          <span className="w-4 h-4 mt-0.5 rounded-full border-2 border-gray-300 flex-shrink-0" />
+                                          <span>{item}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {(beforeScore !== null || afterScore !== null || followUpPractice || followUpRecord) && (
+                                <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 rounded-lg border border-blue-100">
+                                  <p className="text-sm font-medium text-gray-500 mb-3">📊 改练前后对比</p>
+                                  
+                                  {(beforeScore !== null || afterScore !== null) && (
+                                    <div className="flex items-center justify-center gap-4 mb-4">
+                                      <div className="text-center">
+                                        <p className="text-xs text-gray-500 mb-1">改前分数</p>
+                                        <p className={`text-2xl font-bold ${
+                                          beforeScore !== null ? (beforeScore >= 80 ? 'text-green-600' : beforeScore >= 60 ? 'text-yellow-600' : 'text-red-600') : 'text-gray-400'
+                                        }`}>
+                                          {beforeScore ?? '-'}
+                                        </p>
+                                      </div>
+                                      <div className="flex flex-col items-center">
+                                        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-200">
+                                          {scoreChange > 0 ? (
+                                            <TrendingUp className="w-5 h-5 text-green-500" />
+                                          ) : scoreChange < 0 ? (
+                                            <TrendingUp className="w-5 h-5 text-red-500 rotate-180" />
+                                          ) : (
+                                            <span className="text-gray-400">→</span>
+                                          )}
+                                        </div>
+                                        <p className={`text-sm font-bold mt-1 ${
+                                          scoreChange > 0 ? 'text-green-600' : scoreChange < 0 ? 'text-red-600' : 'text-gray-400'
+                                        }`}>
+                                          {scoreChange > 0 ? `+${scoreChange}` : scoreChange === 0 ? '0' : scoreChange}
+                                        </p>
+                                      </div>
+                                      <div className="text-center">
+                                        <p className="text-xs text-gray-500 mb-1">改后分数</p>
+                                        <p className={`text-2xl font-bold ${
+                                          afterScore !== null ? (afterScore >= 80 ? 'text-green-600' : afterScore >= 60 ? 'text-yellow-600' : 'text-red-600') : 'text-gray-400'
+                                        }`}>
+                                          {afterScore ?? '-'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {followUpPractice && comment.type === 'dialogue' && (
+                                    <div className="p-3 bg-white rounded-lg border border-blue-100">
+                                      <p className="text-xs font-medium text-blue-600 mb-2">🎯 跟进话术练习详情</p>
+                                      <div className="grid grid-cols-2 gap-3 text-sm">
+                                        <div>
+                                          <span className="text-gray-500">完成时间：</span>
+                                          <span className="text-gray-700">
+                                            {new Date(followUpPractice.timestamp).toLocaleString('zh-CN', { 
+                                              month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                            })}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">正确率：</span>
+                                          <span className="text-green-600 font-medium">{followUpPractice.correctRate}%</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">得分：</span>
+                                          <span className="text-gray-700 font-medium">{followUpPractice.totalScore}分</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">用时：</span>
+                                          <span className="text-gray-700">{Math.round(followUpPractice.completionTime / 1000)}秒</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {followUpRecord && comment.type === 'record' && (
+                                    <div className="p-3 bg-white rounded-lg border border-purple-100">
+                                      <p className="text-xs font-medium text-purple-600 mb-2">📋 跟进记录训练详情</p>
+                                      <div className="space-y-2 text-sm">
+                                        <div>
+                                          <span className="text-gray-500">完成时间：</span>
+                                          <span className="text-gray-700">
+                                            {new Date(followUpRecord.timestamp).toLocaleString('zh-CN', { 
+                                              month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                            })}
+                                          </span>
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                          <div className="p-2 bg-purple-50 rounded text-center">
+                                            <p className="text-xs text-gray-500">总分</p>
+                                            <p className="font-bold text-purple-600">{followUpRecord.totalScore}</p>
+                                          </div>
+                                          <div className="p-2 bg-blue-50 rounded text-center">
+                                            <p className="text-xs text-gray-500">关键词</p>
+                                            <p className="font-bold text-blue-600">{followUpRecord.keywordScore}</p>
+                                          </div>
+                                          <div className="p-2 bg-green-50 rounded text-center">
+                                            <p className="text-xs text-gray-500">相似度</p>
+                                            <p className="font-bold text-green-600">{followUpRecord.textSimilarity}</p>
+                                          </div>
+                                          <div className="p-2 bg-orange-50 rounded text-center">
+                                            <p className="text-xs text-gray-500">结构分</p>
+                                            <p className="font-bold text-orange-600">{followUpRecord.structureScore}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {hasFollowUp && (
+                                <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                  <p className="text-xs font-medium text-gray-500 mb-2">🔗 改练关联信息</p>
+                                  <div className="space-y-2 text-sm">
+                                    <div className="flex flex-wrap items-center gap-4">
+                                      <span className="text-gray-500">
+                                        跟进记录ID：<code className="bg-white px-1.5 py-0.5 rounded text-xs text-gray-700">{comment.followedUpPracticeScoreId || comment.followedUpRecordResultId || '-'}</code>
+                                      </span>
+                                      {comment.followedUpAt && (
+                                        <span className="text-gray-500">
+                                          跟进时间：<span className="text-gray-700">
+                                            {new Date(comment.followedUpAt).toLocaleString('zh-CN', { 
+                                              month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                            })}
+                                          </span>
+                                        </span>
+                                      )}
+                                      <Badge variant="success" size="sm">学员已完成跟进</Badge>
+                                    </div>
+                                    {comment.followedUpNote && (
+                                      <div className="mt-2 p-3 bg-white border-l-4 border-emerald-400 rounded-r-lg">
+                                        <p className="text-xs text-gray-500 mb-1">💬 学员改练说明：</p>
+                                        <p className="text-sm text-gray-700 italic">{comment.followedUpNote}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {!isClosed && (
+                                <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => navigate(comment.type === 'dialogue' ? `/practice/${comment.caseId}` : `/record/${comment.caseId}`)}
+                                    className="gap-1"
+                                  >
+                                    <BookOpen className="w-4 h-4" />
+                                    跳转{comment.type === 'dialogue' ? '话术' : '记录'}练习页
+                                  </Button>
+                                  <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() => handleQuickFollowUp(comment.caseId, comment.type)}
+                                    className="gap-1"
+                                  >
+                                    <MessageSquare className="w-4 h-4" />
+                                    写新批注继续跟进
+                                  </Button>
+                                </div>
+                              )}
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 text-gray-500">
+                        <Target className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+                        <p className="text-lg font-medium">暂无改练闭环数据</p>
+                        <p className="text-sm mt-1">添加老师批注后，可在此追踪学员的改练闭环情况</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+                
+                <Card className="mb-6" id="teacher-comments-section">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                         <MessageSquare className="w-5 h-5 text-purple-600" />
                         老师批注
                       </h2>
@@ -1990,7 +2313,11 @@ export default function TeacherDashboard() {
                     
                     {teacherComments.length > 0 ? (
                       <div className="space-y-4">
-                        {teacherComments.map((comment, idx) => (
+                        {teacherComments.map((comment, idx) => {
+                          const tracking = closureTrackings.find(t => t.comment.id === comment.id);
+                          const isExpanded = expandedCommentIds.has(comment.id);
+                          
+                          return (
                           <motion.div
                             key={comment.id}
                             initial={{ opacity: 0, y: 10 }}
@@ -1998,12 +2325,12 @@ export default function TeacherDashboard() {
                             transition={{ delay: idx * 0.05 }}
                             className={`p-4 rounded-xl border transition-all ${
                               comment.followedUp 
-                                ? 'bg-gray-50 border-gray-200 opacity-60' 
+                                ? 'bg-gray-50 border-gray-200' 
                                 : 'bg-white border-gray-200 hover:border-purple-200'
                             }`}
                           >
                             <div className="flex items-start justify-between mb-2">
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <Badge 
                                   variant={comment.type === 'dialogue' ? 'info' : 'primary'}
                                   size="sm"
@@ -2018,8 +2345,35 @@ export default function TeacherDashboard() {
                                 ) : (
                                   <Badge variant="warning" size="sm">未跟进</Badge>
                                 )}
+                                {comment.followedUp && comment.followedUpScore !== undefined && (
+                                  <Badge variant="primary" size="sm">
+                                    改练得分：{comment.followedUpScore}分
+                                  </Badge>
+                                )}
+                                {comment.followedUp && comment.followedUpAt && (
+                                  <span className="text-xs text-gray-400 flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" />
+                                    改练提交：{new Date(comment.followedUpAt).toLocaleString('zh-CN', { 
+                                      month: 'numeric', 
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-1">
+                                {comment.followedUp && (tracking?.followUpPractice || tracking?.followUpRecord || comment.followedUpNote) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => toggleCommentExpand(comment.id)}
+                                    className="text-blue-500 hover:bg-blue-50 h-7 px-2 gap-1"
+                                  >
+                                    {isExpanded ? '收起详情' : '查看改练详情'}
+                                    <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                  </Button>
+                                )}
                                 {!comment.followedUp && (
                                   <Button
                                     variant="outline"
@@ -2042,7 +2396,7 @@ export default function TeacherDashboard() {
                               </div>
                             </div>
                             
-                            <p className={`text-sm mb-3 ${comment.followedUp ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                            <p className={`text-sm mb-3 ${comment.followedUp ? 'text-gray-500' : 'text-gray-700'}`}>
                               {comment.content}
                             </p>
                             
@@ -2050,17 +2404,145 @@ export default function TeacherDashboard() {
                               <div className="mb-3 p-3 bg-gray-50 rounded-lg">
                                 <p className="text-xs font-medium text-gray-500 mb-2">待办要点：</p>
                                 <ul className="space-y-1">
-                                  {comment.actionItems.map((item, i) => (
-                                    <li key={i} className={`text-sm flex items-start gap-2 ${comment.followedUp ? 'text-gray-400' : 'text-gray-600'}`}>
-                                      <span className="text-purple-500 mt-0.5">•</span>
-                                      <span>{item}</span>
-                                    </li>
-                                  ))}
+                                  {comment.actionItems.map((item, i) => {
+                                    const isResolved = comment.resolvedActionItems?.includes(item);
+                                    return (
+                                      <li key={i} className={`text-sm flex items-start gap-2 ${
+                                        isResolved ? 'text-green-600 line-through' : comment.followedUp ? 'text-gray-500' : 'text-gray-600'
+                                      }`}>
+                                        {isResolved ? (
+                                          <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                        ) : (
+                                          <span className="text-purple-500 mt-0.5">•</span>
+                                        )}
+                                        <span>{item}</span>
+                                      </li>
+                                    );
+                                  })}
                                 </ul>
                               </div>
                             )}
                             
-                            <div className="flex items-center gap-4 text-xs text-gray-400">
+                            {isExpanded && comment.followedUp && (tracking?.followUpPractice || tracking?.followUpRecord || comment.followedUpNote) && (
+                              <div className="mb-3 p-4 bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 rounded-lg border border-blue-100">
+                                <p className="text-xs font-medium text-gray-600 mb-3">📊 改练详情</p>
+                                
+                                {tracking?.followUpPractice && comment.type === 'dialogue' && (
+                                  <div className="p-3 bg-white rounded-lg border border-blue-100 mb-3">
+                                    <p className="text-xs font-medium text-blue-600 mb-2">🎯 跟进话术练习</p>
+                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                      <div>
+                                        <span className="text-gray-500">完成时间：</span>
+                                        <span className="text-gray-700">
+                                          {new Date(tracking.followUpPractice.timestamp).toLocaleString('zh-CN', { 
+                                            month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                          })}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">得分：</span>
+                                        <span className="font-bold text-blue-600">{tracking.followUpPractice.totalScore}分</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">正确率：</span>
+                                        <span className="font-medium text-green-600">{tracking.followUpPractice.correctRate}%</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">用时：</span>
+                                        <span className="text-gray-700">{Math.round(tracking.followUpPractice.completionTime / 1000)}秒</span>
+                                      </div>
+                                    </div>
+                                    {tracking.beforeScore !== null && tracking.afterScore !== null && (
+                                      <div className="mt-3 pt-3 border-t border-blue-50 flex items-center justify-center gap-4">
+                                        <div className="text-center">
+                                          <p className="text-xs text-gray-500">改前</p>
+                                          <p className="text-lg font-bold text-gray-600">{tracking.beforeScore}</p>
+                                        </div>
+                                        <div className="flex flex-col items-center">
+                                          <span className={tracking.scoreChange > 0 ? 'text-green-500' : tracking.scoreChange < 0 ? 'text-red-500' : 'text-gray-400'}>
+                                            {tracking.scoreChange > 0 ? '↑' : tracking.scoreChange < 0 ? '↓' : '→'}
+                                          </span>
+                                          <span className={`text-sm font-bold ${
+                                            tracking.scoreChange > 0 ? 'text-green-600' : tracking.scoreChange < 0 ? 'text-red-600' : 'text-gray-400'
+                                          }`}>
+                                            {tracking.scoreChange > 0 ? `+${tracking.scoreChange}` : tracking.scoreChange}
+                                          </span>
+                                        </div>
+                                        <div className="text-center">
+                                          <p className="text-xs text-gray-500">改后</p>
+                                          <p className="text-lg font-bold text-green-600">{tracking.afterScore}</p>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {tracking?.followUpRecord && comment.type === 'record' && (
+                                  <div className="p-3 bg-white rounded-lg border border-purple-100 mb-3">
+                                    <p className="text-xs font-medium text-purple-600 mb-2">📋 跟进记录训练</p>
+                                    <div className="space-y-2 text-sm">
+                                      <div>
+                                        <span className="text-gray-500">完成时间：</span>
+                                        <span className="text-gray-700">
+                                          {new Date(tracking.followUpRecord.timestamp).toLocaleString('zh-CN', { 
+                                            month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                          })}
+                                        </span>
+                                      </div>
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                        <div className="p-2 bg-purple-50 rounded text-center">
+                                          <p className="text-xs text-gray-500">总分</p>
+                                          <p className="font-bold text-purple-600">{tracking.followUpRecord.totalScore}</p>
+                                        </div>
+                                        <div className="p-2 bg-blue-50 rounded text-center">
+                                          <p className="text-xs text-gray-500">关键词</p>
+                                          <p className="font-bold text-blue-600">{tracking.followUpRecord.keywordScore}</p>
+                                        </div>
+                                        <div className="p-2 bg-green-50 rounded text-center">
+                                          <p className="text-xs text-gray-500">相似度</p>
+                                          <p className="font-bold text-green-600">{tracking.followUpRecord.textSimilarity}</p>
+                                        </div>
+                                        <div className="p-2 bg-orange-50 rounded text-center">
+                                          <p className="text-xs text-gray-500">结构分</p>
+                                          <p className="font-bold text-orange-600">{tracking.followUpRecord.structureScore}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    {tracking.beforeScore !== null && tracking.afterScore !== null && (
+                                      <div className="mt-3 pt-3 border-t border-purple-50 flex items-center justify-center gap-4">
+                                        <div className="text-center">
+                                          <p className="text-xs text-gray-500">改前</p>
+                                          <p className="text-lg font-bold text-gray-600">{tracking.beforeScore}</p>
+                                        </div>
+                                        <div className="flex flex-col items-center">
+                                          <span className={tracking.scoreChange > 0 ? 'text-green-500' : tracking.scoreChange < 0 ? 'text-red-500' : 'text-gray-400'}>
+                                            {tracking.scoreChange > 0 ? '↑' : tracking.scoreChange < 0 ? '↓' : '→'}
+                                          </span>
+                                          <span className={`text-sm font-bold ${
+                                            tracking.scoreChange > 0 ? 'text-green-600' : tracking.scoreChange < 0 ? 'text-red-600' : 'text-gray-400'
+                                          }`}>
+                                            {tracking.scoreChange > 0 ? `+${tracking.scoreChange}` : tracking.scoreChange}
+                                          </span>
+                                        </div>
+                                        <div className="text-center">
+                                          <p className="text-xs text-gray-500">改后</p>
+                                          <p className="text-lg font-bold text-green-600">{tracking.afterScore}</p>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {comment.followedUpNote && (
+                                  <div className="p-3 bg-white border-l-4 border-emerald-400 rounded-r-lg">
+                                    <p className="text-xs text-gray-500 mb-1">💬 学员改练说明：</p>
+                                    <p className="text-sm text-gray-700 italic">{comment.followedUpNote}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400">
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
                                 {new Date(comment.createdAt).toLocaleString('zh-CN', { 
@@ -2085,7 +2567,8 @@ export default function TeacherDashboard() {
                               )}
                             </div>
                           </motion.div>
-                        ))}
+                        );
+                        })}
                       </div>
                     ) : (
                       <div className="text-center py-8 text-gray-500">

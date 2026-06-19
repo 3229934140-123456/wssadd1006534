@@ -109,18 +109,28 @@ export const addPracticeScore = (score: Omit<PracticeScore, 'timestamp' | 'stude
   saveUserData(userData);
 };
 
-export const addRecordTrainingResult = (result: Omit<RecordTrainingResult, 'id' | 'timestamp' | 'studentId' | 'studentName'>): void => {
+export const addRecordTrainingResult = (
+  result: Omit<RecordTrainingResult, 'id' | 'timestamp' | 'studentId' | 'studentName'>,
+  targetStudentId?: string
+): RecordTrainingResult => {
   const userData = getUserData();
-  const currentStudent = getCurrentStudent();
+  let targetStudent = getCurrentStudent();
+  
+  if (targetStudentId) {
+    const found = userData.students.find(s => s.id === targetStudentId);
+    if (found) targetStudent = found;
+  }
+  
   const newResult: RecordTrainingResult = {
     ...result,
     id: 'record-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
     timestamp: Date.now(),
-    studentId: currentStudent.id,
-    studentName: currentStudent.name
+    studentId: targetStudent.id,
+    studentName: targetStudent.name
   };
   userData.recordTrainingResults.unshift(newResult);
   saveUserData(userData);
+  return newResult;
 };
 
 export const getLastRecordTrainingResult = (caseId: string, studentId?: string): RecordTrainingResult | null => {
@@ -365,7 +375,7 @@ export const getTeacherCommentsByCase = (studentId: string, caseId: string): Tea
 
 export const getLatestUnseenComment = (studentId: string, caseId?: string): TeacherComment | null => {
   const userData = getUserData();
-  let comments = userData.teacherComments.filter(c => c.studentId === studentId && !c.seenByStudent && !c.followedUp);
+  let comments = userData.teacherComments.filter(c => c.studentId === studentId && !c.followedUp);
   if (caseId) {
     comments = comments.filter(c => c.caseId === caseId);
   }
@@ -382,12 +392,29 @@ export const markCommentAsSeen = (commentId: string): void => {
   }
 };
 
-export const markCommentAsFollowedUp = (commentId: string): void => {
+export const markCommentAsFollowedUp = (
+  commentId: string,
+  followUpData?: {
+    practiceScoreId?: string;
+    recordResultId?: string;
+    score?: number;
+    resolvedActionItems?: string[];
+    note?: string;
+  }
+): void => {
   const userData = getUserData();
   const comment = userData.teacherComments.find(c => c.id === commentId);
   if (comment) {
     comment.followedUp = true;
     comment.followedUpAt = Date.now();
+    if (followUpData) {
+      if (followUpData.practiceScoreId) comment.followedUpPracticeScoreId = followUpData.practiceScoreId;
+      if (followUpData.recordResultId) comment.followedUpRecordResultId = followUpData.recordResultId;
+      if (followUpData.score !== undefined) comment.followedUpScore = followUpData.score;
+      if (followUpData.resolvedActionItems) comment.resolvedActionItems = followUpData.resolvedActionItems;
+      if (followUpData.note) comment.followedUpNote = followUpData.note;
+    }
+    comment.updatedAt = Date.now();
     saveUserData(userData);
   }
 };

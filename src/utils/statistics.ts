@@ -1,4 +1,4 @@
-import type { WrongAnswer, PracticeScore, MissingCategory, ReviewStats, CategoryReview, RecordTrainingResult, RecordSection, Student, MorningReviewPackage, ReviewPackageItem, StudentGrowthProfile, StudentGrowthTrend, TeacherWorkbenchData } from '@/types';
+import type { WrongAnswer, PracticeScore, MissingCategory, ReviewStats, CategoryReview, RecordTrainingResult, RecordSection, Student, MorningReviewPackage, ReviewPackageItem, StudentGrowthProfile, StudentGrowthTrend, TeacherWorkbenchData, TeacherComment, CommentClosureTracking } from '@/types';
 import { getTeachingPointsByCategory, getPracticeSuggestionsByStudent } from './storage';
 
 const CATEGORY_NAMES: Record<MissingCategory, string> = {
@@ -637,5 +637,85 @@ export const getFilterOptions = (
     studentOptions: students.map(s => ({ id: s.id, name: s.name })),
     categoryOptions
   };
+};
+
+export const generateCommentClosureTracking = (
+  comments: TeacherComment[],
+  practiceScores: PracticeScore[],
+  recordResults: RecordTrainingResult[]
+): CommentClosureTracking[] => {
+  return comments.map(comment => {
+    const beforePracticeScores = practiceScores.filter(
+      s => s.studentId === comment.studentId && s.caseId === comment.caseId && s.timestamp < comment.createdAt
+    );
+    const afterPracticeScores = practiceScores.filter(
+      s => s.studentId === comment.studentId && s.caseId === comment.caseId && s.timestamp >= comment.createdAt
+    );
+    
+    const beforeRecords = recordResults.filter(
+      r => r.studentId === comment.studentId && r.caseId === comment.caseId && r.timestamp < comment.createdAt
+    );
+    const afterRecords = recordResults.filter(
+      r => r.studentId === comment.studentId && r.caseId === comment.caseId && r.timestamp >= comment.createdAt
+    );
+    
+    let beforeScore: number | null = null;
+    let afterScore: number | null = null;
+    
+    if (comment.type === 'dialogue') {
+      beforeScore = beforePracticeScores.length > 0
+        ? Math.round(beforePracticeScores.reduce((sum, s) => sum + s.totalScore, 0) / beforePracticeScores.length)
+        : null;
+      afterScore = afterPracticeScores.length > 0
+        ? Math.round(afterPracticeScores.reduce((sum, s) => sum + s.totalScore, 0) / afterPracticeScores.length)
+        : null;
+    } else {
+      beforeScore = beforeRecords.length > 0
+        ? Math.round(beforeRecords.reduce((sum, r) => sum + r.totalScore, 0) / beforeRecords.length)
+        : null;
+      afterScore = afterRecords.length > 0
+        ? Math.round(afterRecords.reduce((sum, r) => sum + r.totalScore, 0) / afterRecords.length)
+        : null;
+    }
+    
+    const scoreChange = beforeScore !== null && afterScore !== null
+      ? afterScore - beforeScore
+      : 0;
+    
+    const actionItems = comment.actionItems || [];
+    const resolvedActionItems = comment.resolvedActionItems || [];
+    const completedActionItems = actionItems.filter(item => resolvedActionItems.includes(item));
+    const pendingActionItems = actionItems.filter(item => !resolvedActionItems.includes(item));
+    
+    const followUpPractice = comment.followedUpPracticeScoreId
+      ? practiceScores.find(s => s.timestamp.toString() === comment.followedUpPracticeScoreId || (s.caseId + '-' + s.studentId) === comment.followedUpPracticeScoreId)
+      : undefined;
+    
+    const followUpRecord = comment.followedUpRecordResultId
+      ? recordResults.find(r => r.id === comment.followedUpRecordResultId)
+      : undefined;
+    
+    const actionItemProgress = actionItems.length > 0
+      ? (completedActionItems.length / actionItems.length) * 100
+      : 100;
+    
+    const isClosed = comment.followedUp && (actionItems.length === 0 || pendingActionItems.length === 0);
+    const closurePercentage = Math.round(
+      (comment.followedUp ? 50 : 0) + actionItemProgress * 0.5
+    );
+    
+    return {
+      comment,
+      beforeScore,
+      afterScore,
+      scoreChange,
+      completedActionItems,
+      pendingActionItems,
+      followUpPractice,
+      followUpRecord,
+      isClosed,
+      closurePercentage
+    };
+  }).sort((a, b) => b.comment.createdAt - a.comment.createdAt);
 };
 

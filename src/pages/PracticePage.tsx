@@ -63,6 +63,10 @@ export default function PracticePage() {
   const [showCommentAlert, setShowCommentAlert] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [pendingFollowUpComment, setPendingFollowUpComment] = useState<TeacherComment | null>(null);
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [resolvedActionItems, setResolvedActionItems] = useState<string[]>([]);
+  const [followUpNote, setFollowUpNote] = useState('');
+  const [showFollowUpSuccess, setShowFollowUpSuccess] = useState(false);
   
   const caseData = caseId ? getCaseById(caseId) : undefined;
   const dialogues = caseId ? getDialoguesByCaseId(caseId) : [];
@@ -116,10 +120,40 @@ export default function PracticePage() {
     setLatestComment(null);
   };
   
-  const handleMarkFollowedUp = () => {
+  const handleOpenFollowUpModal = () => {
+    if (pendingFollowUpComment?.actionItems) {
+      setResolvedActionItems([...pendingFollowUpComment.actionItems]);
+    } else {
+      setResolvedActionItems([]);
+    }
+    setFollowUpNote('');
+    setShowFollowUpModal(true);
+  };
+
+  const handleToggleActionItem = (item: string) => {
+    setResolvedActionItems(prev =>
+      prev.includes(item)
+        ? prev.filter(i => i !== item)
+        : [...prev, item]
+    );
+  };
+
+  const handleConfirmFollowUp = () => {
     if (pendingFollowUpComment) {
-      markCommentAsFollowedUp(pendingFollowUpComment.id);
+      const timestamp = Date.now();
+      const practiceScoreId = `practice-${timestamp}`;
+      markCommentAsFollowedUp(pendingFollowUpComment.id, {
+        practiceScoreId,
+        score: practiceState.currentScore,
+        resolvedActionItems,
+        note: followUpNote || undefined
+      });
+      setShowFollowUpModal(false);
       setPendingFollowUpComment(null);
+      setShowCommentAlert(false);
+      setLatestComment(null);
+      setShowFollowUpSuccess(true);
+      setTimeout(() => setShowFollowUpSuccess(false), 4000);
     }
   };
   
@@ -300,10 +334,36 @@ export default function PracticePage() {
           </motion.div>
           
           <AnimatePresence>
-            {pendingFollowUpComment && (
+            {showFollowUpSuccess && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ delay: 0.5 }}
+                className="mb-6"
+              >
+                <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-md">
+                        <CheckCheck className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-800">改练已跟进完成</h3>
+                        <p className="text-sm text-gray-600">
+                          老师将看到您的提交记录
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+            {pendingFollowUpComment && !showFollowUpSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
                 transition={{ delay: 0.5 }}
                 className="mb-6"
               >
@@ -323,7 +383,7 @@ export default function PracticePage() {
                       </div>
                       <Button
                         variant="primary"
-                        onClick={handleMarkFollowedUp}
+                        onClick={handleOpenFollowUpModal}
                         className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 border-0"
                       >
                         <CheckCheck className="w-4 h-4" />
@@ -374,7 +434,13 @@ export default function PracticePage() {
             exit={{ opacity: 0, y: -20 }}
             className="sticky top-0 z-40"
           >
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-3 shadow-lg">
+            <div className={`${
+              latestComment.seenByStudent
+                ? 'bg-gradient-to-r from-slate-500 to-slate-600'
+                : 'bg-gradient-to-r from-amber-500 to-orange-500'
+            } text-white px-4 py-3 shadow-lg cursor-pointer`}
+              onClick={handleViewComment}
+            >
               <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -382,7 +448,10 @@ export default function PracticePage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">
-                      老师有新批注：{getContentSummary(latestComment.content)}
+                      {latestComment.seenByStudent
+                        ? '有待完成的老师批注，完成改练后请标记跟进'
+                        : `老师有新批注：${getContentSummary(latestComment.content)}`
+                      }
                     </p>
                   </div>
                 </div>
@@ -390,8 +459,15 @@ export default function PracticePage() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={handleViewComment}
-                    className="bg-white text-amber-600 hover:bg-amber-50 border-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleViewComment();
+                    }}
+                    className={`${
+                      latestComment.seenByStudent
+                        ? 'bg-white text-slate-600 hover:bg-slate-50'
+                        : 'bg-white text-amber-600 hover:bg-amber-50'
+                    } border-0`}
                   >
                     查看详情
                   </Button>
@@ -726,6 +802,112 @@ export default function PracticePage() {
                 >
                   <CheckCheck className="w-4 h-4" />
                   我已了解
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showFollowUpModal && pendingFollowUpComment && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={() => setShowFollowUpModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                    <CheckCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">标记改练已跟进</h3>
+                    <p className="text-sm text-white/80">{pendingFollowUpComment.caseTitle}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowFollowUpModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto max-h-[60vh]">
+                <div className="space-y-5">
+                  {pendingFollowUpComment.actionItems && pendingFollowUpComment.actionItems.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <ListTodo className="w-4 h-4" />
+                        完成的待办要点（默认全选）
+                      </h4>
+                      <div className="space-y-2">
+                        {pendingFollowUpComment.actionItems.map((item, index) => (
+                          <label
+                            key={index}
+                            className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={resolvedActionItems.includes(item)}
+                              onChange={() => handleToggleActionItem(item)}
+                              className="mt-0.5 w-4 h-4 rounded border-gray-300 text-amber-500 focus:ring-amber-500"
+                            />
+                            <span className="text-sm text-gray-700">{item}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      改练说明（可选）
+                    </h4>
+                    <textarea
+                      value={followUpNote}
+                      onChange={(e) => setFollowUpNote(e.target.value)}
+                      placeholder="请填写本次改练的心得体会或需要说明的内容..."
+                      className="w-full p-3 border border-gray-200 rounded-xl resize-none focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
+                      rows={4}
+                    />
+                  </div>
+
+                  <div className="bg-blue-50 rounded-xl p-4">
+                    <div className="flex items-center gap-2 text-sm text-blue-700">
+                      <Target className="w-4 h-4" />
+                      <span className="font-medium">本次练习得分：{practiceState.currentScore} / {practiceState.maxScore} 分（正确率 {correctRate}%）</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFollowUpModal(false)}
+                  className="flex-1"
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleConfirmFollowUp}
+                  className="flex-1 gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 border-0"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  确认提交
                 </Button>
               </div>
             </motion.div>
